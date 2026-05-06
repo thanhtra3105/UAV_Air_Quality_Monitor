@@ -1,0 +1,648 @@
+{% extends "base.html" %}
+{% block title %}Mission Planner — UAV GCS{% endblock %}
+
+{% block topbar_title %}<h1 class="page-title">Mission Planner</h1>{% endblock %}
+
+{% block head_extra %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  /* Reset và fix layout */
+  * {
+    box-sizing: border-box;
+  }
+  
+  /* Layout chính - fixed height */
+  .mission-layout {
+    display: flex;
+    gap: 20px;
+    height: calc(100vh - 100px);
+    overflow: hidden;
+  }
+  
+  /* Map container */
+  #map {
+    flex: 1;
+    height: 100%;
+    border-radius: 16px;
+    border: 1px solid var(--border);
+    min-width: 0;
+  }
+  
+  /* Panel bên phải - scrollable */
+  .mission-panel {
+    width: 340px;
+    flex-shrink: 0;
+    height: 100%;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding-right: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  
+  /* Card style */
+  .card-modern {
+    background: var(--surface);
+    border-radius: 14px;
+    box-shadow: var(--shadow);
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+  
+  .card-header {
+    padding: 10px 14px;
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+    font-weight: 600;
+    font-size: 0.8rem;
+    color: var(--txt);
+  }
+  
+  .card-body {
+    padding: 12px;
+  }
+  
+  /* Data logging row */
+  .data-logging-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  
+  /* Toggle switch */
+  .toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 44px;
+    height: 22px;
+    flex-shrink: 0;
+  }
+  .toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+  }
+  .toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #ccc;
+    transition: 0.3s;
+    border-radius: 22px;
+  }
+  .toggle-slider:before {
+    position: absolute;
+    content: "";
+    height: 16px;
+    width: 16px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: 0.3s;
+    border-radius: 50%;
+  }
+  input:checked + .toggle-slider {
+    background-color: var(--ok);
+  }
+  input:checked + .toggle-slider:before {
+    transform: translateX(22px);
+  }
+  
+  /* Sensor grid - 3 cột */
+  .sensor-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+  .sensor-item {
+    background: var(--surface2);
+    border-radius: 10px;
+    padding: 6px 4px;
+    text-align: center;
+  }
+  .sensor-item .label {
+    font-size: 0.6rem;
+    color: var(--txt3);
+    margin-bottom: 3px;
+  }
+  .sensor-item .value {
+    font-size: 0.9rem;
+    font-weight: 600;
+    font-family: monospace;
+  }
+  .sensor-item .unit {
+    font-size: 0.55rem;
+    color: var(--txt3);
+  }
+  
+  /* Hold progress */
+  .hold-progress {
+    background: var(--surface2);
+    border-radius: 10px;
+    padding: 8px 10px;
+    display: none;
+  }
+  .hold-progress.active {
+    display: block;
+  }
+  .hold-header {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.65rem;
+    margin-bottom: 5px;
+  }
+  .progress-bar-bg {
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .progress-bar-fill {
+    height: 100%;
+    background: var(--accent);
+    width: 0%;
+    transition: width 0.3s;
+  }
+  
+  /* Stats row - 3 cột */
+  .stats-row {
+    display: flex;
+    gap: 10px;
+  }
+  .stat-box {
+    flex: 1;
+    text-align: center;
+    padding: 6px 0;
+    background: var(--surface2);
+    border-radius: 10px;
+  }
+  .stat-box .label {
+    font-size: 0.6rem;
+    color: var(--txt3);
+  }
+  .stat-box .value {
+    font-size: 1rem;
+    font-weight: 700;
+    font-family: monospace;
+    color: var(--accent);
+  }
+  
+  /* Button rows */
+  .btn-row {
+    display: flex;
+    gap: 8px;
+  }
+  .btn-row .btn {
+    flex: 1;
+    justify-content: center;
+    text-align: center;
+  }
+  
+  /* Map tools */
+  .map-tools-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .map-type-group {
+    display: flex;
+    gap: 5px;
+    flex: 1;
+  }
+  .map-type-group .btn {
+    flex: 1;
+    font-size: 0.7rem;
+    padding: 5px 8px;
+  }
+  
+  /* Waypoint list */
+  .wp-list {
+    max-height: 140px;
+    overflow-y: auto;
+    margin: 8px 0;
+  }
+  .wp-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 8px;
+    background: var(--surface2);
+    border-radius: 8px;
+    margin-bottom: 5px;
+    font-size: 0.7rem;
+  }
+  .wp-num {
+    width: 20px;
+    height: 20px;
+    background: var(--accent);
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.6rem;
+    font-weight: bold;
+    flex-shrink: 0;
+  }
+  .wp-coords {
+    flex: 1;
+    font-family: monospace;
+    font-size: 0.6rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .wp-alt-input {
+    width: 45px;
+    padding: 3px;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    font-size: 0.6rem;
+    text-align: center;
+  }
+  .wp-remove {
+    background: none;
+    border: none;
+    font-size: 1rem;
+    cursor: pointer;
+    color: var(--txt3);
+    padding: 0 3px;
+    flex-shrink: 0;
+  }
+  .wp-remove:hover {
+    color: var(--danger);
+  }
+  
+  /* Mission progress */
+  .mission-progress-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+    padding-top: 6px;
+    border-top: 1px solid var(--border);
+  }
+  .ms-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--txt3);
+    flex-shrink: 0;
+  }
+  .ms-dot.running { background: var(--warn); animation: pulse 0.8s infinite; }
+  .ms-dot.done { background: var(--ok); }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+  
+  /* Data list */
+  .data-list {
+    max-height: 140px;
+    overflow-y: auto;
+  }
+  .data-item {
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    font-size: 0.65rem;
+  }
+  .data-item:hover {
+    background: var(--surface2);
+  }
+  .data-item.aqi-1 { border-left: 2px solid #10B981; }
+  .data-item.aqi-2 { border-left: 2px solid #84CC16; }
+  .data-item.aqi-3 { border-left: 2px solid #F59E0B; }
+  .data-item.aqi-4 { border-left: 2px solid #F97316; }
+  .data-item.aqi-5 { border-left: 2px solid #EF4444; }
+  
+  /* Export buttons */
+  .export-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+  }
+  .export-row .btn {
+    flex: 1;
+    font-size: 0.7rem;
+    padding: 5px;
+  }
+  
+  /* Log */
+  .event-log {
+    background: #1E293B;
+    color: #CBD5E1;
+    border-radius: 10px;
+    padding: 8px;
+    font-family: monospace;
+    font-size: 0.65rem;
+    max-height: 90px;
+    overflow-y: auto;
+  }
+  .log-line {
+    margin-bottom: 3px;
+    white-space: nowrap;
+    overflow-x: hidden;
+    text-overflow: ellipsis;
+  }
+  .log-line.ok { color: #34D399; }
+  .log-line.warn { color: #FBBF24; }
+  .log-line.err { color: #F87171; }
+  
+  /* Button base styles */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 6px 10px;
+    border-radius: 8px;
+    font-size: 0.7rem;
+    font-weight: 500;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+  }
+  .btn:active {
+    transform: scale(0.97);
+  }
+  .btn-sm {
+    padding: 5px 10px;
+    font-size: 0.7rem;
+  }
+  .btn-primary {
+    background: var(--accent);
+    color: white;
+  }
+  .btn-primary:hover {
+    background: var(--accent-hov);
+  }
+  .btn-danger {
+    background: var(--danger);
+    color: white;
+  }
+  .btn-danger:hover {
+    background: #DC2626;
+  }
+  .btn-warn {
+    background: var(--warn);
+    color: white;
+  }
+  .btn-warn:hover {
+    background: #D97706;
+  }
+  .btn-ghost {
+    background: var(--surface2);
+    color: var(--txt);
+  }
+  .btn-ghost:hover {
+    background: var(--border);
+  }
+  
+  .map-type-btn.active {
+    background: var(--accent) !important;
+    color: white !important;
+  }
+  
+  /* Scrollbar */
+  .mission-panel::-webkit-scrollbar,
+  .wp-list::-webkit-scrollbar,
+  .data-list::-webkit-scrollbar,
+  .event-log::-webkit-scrollbar {
+    width: 4px;
+  }
+  .mission-panel::-webkit-scrollbar-track,
+  .wp-list::-webkit-scrollbar-track,
+  .data-list::-webkit-scrollbar-track,
+  .event-log::-webkit-scrollbar-track {
+    background: var(--surface2);
+    border-radius: 4px;
+  }
+  .mission-panel::-webkit-scrollbar-thumb,
+  .wp-list::-webkit-scrollbar-thumb,
+  .data-list::-webkit-scrollbar-thumb,
+  .event-log::-webkit-scrollbar-thumb {
+    background: var(--border-md);
+    border-radius: 4px;
+  }
+</style>
+{% endblock %}
+
+{% block main_content %}
+<div class="mission-layout">
+  <div id="map"></div>
+
+  <div class="mission-panel">
+    <!-- 1. Data Logging -->
+    <div class="card-modern">
+      <div class="card-header">📝 Ghi dữ liệu cảm biến</div>
+      <div class="card-body">
+        <div class="data-logging-row">
+          <span style="font-size: 0.7rem;">Tự động thu thập khi đến waypoint</span>
+          <label class="toggle-switch">
+            <input type="checkbox" id="data-logging-toggle" checked>
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. Chất lượng không khí -->
+    <div class="card-modern">
+      <div class="card-header">🌍 Chất lượng không khí</div>
+      <div class="card-body">
+        <div class="sensor-grid">
+          <div class="sensor-item">
+            <div class="label">PM2.5</div>
+            <div class="value"><span id="quick-pm25">--</span><span class="unit">µg</span></div>
+          </div>
+          <div class="sensor-item">
+            <div class="label">CO₂</div>
+            <div class="value"><span id="quick-eco2">--</span><span class="unit">ppm</span></div>
+          </div>
+          <div class="sensor-item">
+            <div class="label">TVOC</div>
+            <div class="value"><span id="quick-tvoc">--</span><span class="unit">ppb</span></div>
+          </div>
+          <div class="sensor-item">
+            <div class="label">Nhiệt độ</div>
+            <div class="value"><span id="quick-temp">--</span><span class="unit">°C</span></div>
+          </div>
+          <div class="sensor-item">
+            <div class="label">Độ ẩm</div>
+            <div class="value"><span id="quick-hum">--</span><span class="unit">%</span></div>
+          </div>
+          <div class="sensor-item">
+            <div class="label">AQI</div>
+            <div class="value"><span id="quick-aqi" style="font-weight: 700;">--</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3. Thu thập dữ liệu (Hold progress) -->
+    <div id="hold-progress" class="hold-progress">
+      <div class="hold-header">
+        <span>📊 Đang thu thập dữ liệu</span>
+        <span id="hold-counter">0/10</span>
+      </div>
+      <div class="progress-bar-bg">
+        <div id="hold-bar" class="progress-bar-fill"></div>
+      </div>
+      <div id="hold-status" style="font-size: 0.6rem; color: var(--txt3); margin-top: 4px;"></div>
+    </div>
+
+    <!-- 4. Trạng thái UAV -->
+    <div class="card-modern">
+      <div class="card-header">🚁 Trạng thái UAV</div>
+      <div class="card-body">
+        <div class="stats-row">
+          <div class="stat-box">
+            <div class="label">Độ cao</div>
+            <div class="value" id="alt-val">-- m</div>
+          </div>
+          <div class="stat-box">
+            <div class="label">Vận tốc</div>
+            <div class="value" id="spd-val">-- m/s</div>
+          </div>
+          <div class="stat-box">
+            <div class="label">Hướng</div>
+            <div class="value" id="hdg-val">--°</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 5. Điều khiển UAV -->
+    <div class="card-modern">
+      <div class="card-header">🎮 Điều khiển UAV</div>
+      <div class="card-body">
+        <div class="btn-row">
+          <button class="btn btn-danger" onclick="armVehicle()">ARM</button>
+          <button class="btn btn-ghost" onclick="disarmVehicle()">DISARM</button>
+          <button class="btn btn-warn" onclick="rtl()">RTL</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 6. Bản đồ & Waypoint -->
+    <div class="card-modern">
+      <div class="card-header">🗺️ Bản đồ & Waypoint</div>
+      <div class="card-body">
+        <!-- Map type buttons -->
+        <div class="map-tools-row">
+          <div class="map-type-group">
+            <button class="btn map-type-btn active" onclick="setMapType('roadmap',this)">Đường</button>
+            <button class="btn map-type-btn" onclick="setMapType('satellite',this)">Vệ tinh</button>
+            <button class="btn map-type-btn" onclick="setMapType('terrain',this)">Địa hình</button>
+          </div>
+          <button class="btn btn-primary" onclick="centerToUAV()">📍 Định vị</button>
+        </div>
+        
+        <!-- Waypoint list -->
+        <div style="margin-top: 10px;">
+          <div style="font-size: 0.65rem; color: var(--txt3); margin-bottom: 5px;">📌 Danh sách waypoint</div>
+          <div id="wp-list-wrap" class="wp-list">
+            <div style="text-align:center; color:var(--txt3); padding: 8px;" id="wp-empty">
+              ✏️ Click lên bản đồ để thêm
+            </div>
+          </div>
+        </div>
+        
+        <!-- Upload progress -->
+        <div class="progress-bar-bg" style="margin: 6px 0;">
+          <div class="progress-bar-fill" id="upload-bar" style="background: var(--accent);"></div>
+        </div>
+        
+        <!-- Mission buttons -->
+        <div class="btn-row">
+          <button class="btn btn-ghost" onclick="clearWaypoints()">🗑️ Xóa</button>
+          <button class="btn btn-primary" onclick="uploadMission()">📤 Upload</button>
+          <button class="btn btn-warn" onclick="startMission()">▶️ Start</button>
+          <button class="btn btn-ghost" onclick="stopMission()">⏹️ Stop</button>
+        </div>
+        
+        <!-- Mission progress -->
+        <div class="mission-progress-row">
+          <span class="ms-dot idle" id="ms-dot"></span>
+          <span id="ms-text" style="font-size: 0.7rem;">-- / --</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 7. Dữ liệu đã thu thập -->
+    <div class="card-modern">
+      <div class="card-header">
+        📊 Dữ liệu đã thu thập
+        <span id="data-count" style="float: right; font-size: 0.6rem;">(0)</span>
+      </div>
+      <div class="card-body">
+        <div id="data-list" class="data-list">
+          <div style="text-align:center; color:var(--txt3); padding: 12px;">Chưa có dữ liệu</div>
+        </div>
+        <div class="export-row">
+          <button class="btn btn-primary" onclick="exportDataCSV()">📥 CSV</button>
+          <button class="btn btn-ghost" onclick="exportDataJSON()">📄 JSON</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 8. System Log -->
+    <div class="card-modern">
+      <div class="card-header">📋 System Log</div>
+      <div class="card-body" style="padding: 8px;">
+        <div class="event-log" id="log"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function formatNumberQuick(value, decimals = 1) {
+  if (value === undefined || value === null) return '--';
+  const num = parseFloat(value);
+  if (isNaN(num)) return '--';
+  return num.toFixed(decimals);
+}
+
+async function updateAirQualityDisplay() {
+  try {
+    const tele = await fetch('/api/telemetry').then(r => r.json());
+    if (tele.success && tele.telemetry) {
+      const s = tele.telemetry;
+      document.getElementById('quick-pm25').innerHTML = formatNumberQuick(s.pm25, 1) + '<span class="unit">µg</span>';
+      document.getElementById('quick-eco2').innerHTML = formatNumberQuick(s.eco2, 0) + '<span class="unit">ppm</span>';
+      document.getElementById('quick-tvoc').innerHTML = formatNumberQuick(s.tvoc, 0) + '<span class="unit">ppb</span>';
+      document.getElementById('quick-temp').innerHTML = formatNumberQuick(s.temp, 1) + '<span class="unit">°C</span>';
+      document.getElementById('quick-hum').innerHTML = formatNumberQuick(s.hum, 1) + '<span class="unit">%</span>';
+      
+      const aqi = s.aqi || 1;
+      const aqiEl = document.getElementById('quick-aqi');
+      aqiEl.textContent = aqi;
+      const aqiColors = {1: '#10B981', 2: '#84CC16', 3: '#F59E0B', 4: '#F97316', 5: '#EF4444'};
+      aqiEl.style.color = aqiColors[aqi] || '#94A3B8';
+    }
+  } catch(err) {
+    console.error(err);
+  }
+}
+
+setInterval(updateAirQualityDisplay, 2000);
+updateAirQualityDisplay();
+</script>
+{% endblock %}
+
+{% block body_script %}
+<script src="{{ url_for('static', filename='script.js') }}"></script>
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    initMap();
+  });
+</script>
+{% endblock %}

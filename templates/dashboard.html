@@ -1,0 +1,335 @@
+{% extends "base.html" %}
+{% block title %}Telemetry — UAV GCS{% endblock %}
+{% block topbar_title %}<h1 class="page-title">Telemetry & Flight Data</h1>{% endblock %}
+
+{% block head_extra %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  .sensors-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+    margin-top: 16px;
+  }
+  .sensor-card {
+    background: var(--surface);
+    border-radius: var(--radius-sm);
+    padding: 16px;
+    text-align: center;
+  }
+  .sensor-card .sensor-label {
+    font-size: 0.7rem;
+    color: var(--txt3);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .sensor-card .sensor-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    font-family: 'Roboto Mono', monospace;
+    margin-top: 4px;
+  }
+  .sensor-card .sensor-unit {
+    font-size: 0.75rem;
+    color: var(--txt3);
+  }
+  .aqi-display {
+    text-align: center;
+    padding: 16px;
+    border-radius: var(--radius-sm);
+    margin-top: 16px;
+  }
+  .aqi-1 { background: #10B98120; border: 1px solid #10B981; }
+  .aqi-2 { background: #84CC1620; border: 1px solid #84CC16; }
+  .aqi-3 { background: #F59E0B20; border: 1px solid #F59E0B; }
+  .aqi-4 { background: #F9731620; border: 1px solid #F97316; }
+  .aqi-5 { background: #EF444420; border: 1px solid #EF4444; }
+  .stat-value {
+    font-family: 'Roboto Mono', monospace;
+    font-size: 1.5rem;
+    font-weight: 600;
+  }
+</style>
+{% endblock %}
+
+{% block main_content %}
+<div class="telemetry-container">
+  
+  <div class="section-label">Flight Data</div>
+  <div class="stat-grid">
+    <div class="card metric-card">
+      <div class="metric-data">
+        <span class="card-label">Độ cao (Alt)</span>
+        <div class="card-value"><span id="t-alt" class="stat-value">--</span><span class="card-unit">m</span></div>
+        <div class="alt-bar-wrap" style="height: 4px; background: var(--surface2); border-radius: 2px; margin-top: 8px; overflow: hidden;">
+          <div id="alt-fill" style="height: 100%; background: var(--accent); width: 0%; transition: 0.3s;"></div>
+        </div>
+      </div>
+    </div>
+    <div class="card metric-card">
+      <div class="metric-data">
+        <span class="card-label">Vận tốc (V)</span>
+        <div class="card-value"><span id="t-spd" class="stat-value">--</span><span class="card-unit">m/s</span></div>
+      </div>
+    </div>
+    <div class="card metric-card">
+      <div class="metric-data">
+        <span class="card-label">Hướng (Heading)</span>
+        <div class="card-value"><span id="t-hdg" class="stat-value">--</span><span class="card-unit">°</span></div>
+      </div>
+    </div>
+    <div class="card metric-card">
+      <div class="metric-data">
+        <span class="card-label">Pin (Battery)</span>
+        <div class="card-value"><span id="t-bat" class="stat-value">--</span><span class="card-unit">%</span></div>
+        <div style="height: 4px; background: var(--surface2); border-radius: 2px; margin-top: 8px; overflow: hidden;">
+          <div id="t-bat-bar" style="height: 100%; background: var(--ok); width: 0%; transition: 0.3s;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-label" style="margin-top: 24px;">🌍 Dữ liệu quan trắc không khí (Air Quality)</div>
+  
+  <div class="sensors-grid">
+    <div class="sensor-card">
+      <div class="sensor-label">Bụi mịn PM2.5</div>
+      <div class="sensor-value"><span id="s-pm25" class="stat-value">--</span></div>
+      <div class="sensor-unit">µg/m³</div>
+      <div style="height: 4px; background: var(--surface2); border-radius: 2px; margin-top: 8px; overflow: hidden;">
+        <div id="bar-pm25" style="height:100%; background: #EF4444; width:0%;"></div>
+      </div>
+    </div>
+    
+    <div class="sensor-card">
+      <div class="sensor-label">Bụi mịn PM10</div>
+      <div class="sensor-value"><span id="s-pm10" class="stat-value">--</span></div>
+      <div class="sensor-unit">µg/m³</div>
+      <div style="height: 4px; background: var(--surface2); border-radius: 2px; margin-top: 8px; overflow: hidden;">
+        <div id="bar-pm10" style="height:100%; background: #F97316; width:0%;"></div>
+      </div>
+    </div>
+    
+    <div class="sensor-card">
+      <div class="sensor-label">Carbon Dioxide (CO₂)</div>
+      <div class="sensor-value"><span id="s-eco2" class="stat-value">--</span></div>
+      <div class="sensor-unit">ppm</div>
+      <div style="height: 4px; background: var(--surface2); border-radius: 2px; margin-top: 8px; overflow: hidden;">
+        <div id="bar-eco2" style="height:100%; background: #F59E0B; width:0%;"></div>
+      </div>
+    </div>
+    
+    <div class="sensor-card">
+      <div class="sensor-label">TVOC (Hợp chất hữu cơ)</div>
+      <div class="sensor-value"><span id="s-tvoc" class="stat-value">--</span></div>
+      <div class="sensor-unit">ppb</div>
+      <div style="height: 4px; background: var(--surface2); border-radius: 2px; margin-top: 8px; overflow: hidden;">
+        <div id="bar-tvoc" style="height:100%; background: #8B5CF6; width:0%;"></div>
+      </div>
+    </div>
+    
+    <div class="sensor-card">
+      <div class="sensor-label">Nhiệt độ</div>
+      <div class="sensor-value"><span id="s-temp" class="stat-value">--</span></div>
+      <div class="sensor-unit">°C</div>
+    </div>
+    
+    <div class="sensor-card">
+      <div class="sensor-label">Độ ẩm</div>
+      <div class="sensor-value"><span id="s-hum" class="stat-value">--</span></div>
+      <div class="sensor-unit">%</div>
+    </div>
+  </div>
+  
+  <div id="aqi-container" class="aqi-display aqi-1">
+    <div style="font-size: 0.8rem; color: var(--txt3);">Chỉ số chất lượng không khí (AQI)</div>
+    <div style="font-size: 2.5rem; font-weight: 700;" id="s-aqi">--</div>
+    <div id="s-aqi-label" style="font-size: 0.9rem; font-weight: 500;">--</div>
+  </div>
+
+  <div class="section-label" style="margin-top: 24px;">Flight Mode & Controls</div>
+  <div class="card" style="margin-bottom:24px;">
+    <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+      <div>
+        <div class="card-label">Mode</div>
+        <div style="font-family:'Roboto Mono',monospace;font-size:1.2rem;font-weight:600;color:var(--accent);" id="t-mode">--</div>
+      </div>
+      <div style="width: 1px; height: 30px; background: var(--border);"></div>
+      <div>
+        <div class="card-label">Status</div>
+        <div style="font-family:'Roboto Mono',monospace;font-size:1.2rem;font-weight:600;" id="t-armed">--</div>
+      </div>
+      <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn btn-primary btn-sm" onclick="api('/arm','POST','ARM')">ARM</button>
+        <button class="btn btn-ghost btn-sm"   onclick="api('/disarm','POST','DISARM')">DISARM</button>
+        <button class="btn btn-warn btn-sm"    onclick="api('/rtl','POST','RTL')">RTL</button>
+        <button class="btn btn-ghost btn-sm"   onclick="setMode('LOITER')">LOITER</button>
+        <button class="btn btn-ghost btn-sm"   onclick="setMode('GUIDED')">GUIDED</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-label">Lịch sử dữ liệu (History)</div>
+  <div class="card chart-area" style="min-height: 300px;">
+    <canvas id="histChart" height="120"></canvas>
+  </div>
+</div>
+{% endblock %}
+
+{% block body_script %}
+<script>
+const MAX_POINTS = 60;
+const chartData = {
+  labels: [], pm25: [], eco2: [], tvoc: [], temp: [], hum: []
+};
+
+const ctx = document.getElementById('histChart').getContext('2d');
+const histChart = new Chart(ctx, {
+  type: 'line',
+  data: {
+    labels: chartData.labels,
+    datasets: [
+      { label: 'PM2.5 (µg/m³)', data: chartData.pm25, borderColor: '#EF4444', borderWidth: 2, pointRadius: 0, tension: 0.4, fill: false, yAxisID: 'y' },
+      { label: 'CO₂ (ppm/10)', data: chartData.eco2, borderColor: '#F59E0B', borderWidth: 2, pointRadius: 0, tension: 0.4, fill: false, yAxisID: 'y' },
+      { label: 'TVOC (ppb/10)', data: chartData.tvoc, borderColor: '#8B5CF6', borderWidth: 2, pointRadius: 0, tension: 0.4, fill: false, yAxisID: 'y' },
+      { label: 'Nhiệt độ (°C)', data: chartData.temp, borderColor: '#10B981', borderWidth: 2, pointRadius: 0, tension: 0.4, fill: false, yAxisID: 'y1' },
+    ]
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: true,
+    animation: false,
+    plugins: { 
+      legend: { labels: { font: { family: 'Inter', size: 10 } } }
+    },
+    scales: {
+      x: { ticks: { font: { size: 10 }, maxRotation: 45, autoSkip: true } },
+      y: { 
+        title: { display: true, text: 'PM2.5 / CO₂ / TVOC', font: { size: 10 } },
+        ticks: { font: { size: 10 } }
+      },
+      y1: {
+        position: 'right',
+        title: { display: true, text: 'Nhiệt độ (°C)', font: { size: 10 } },
+        ticks: { font: { size: 10 } },
+        grid: { drawOnChartArea: false }
+      }
+    }
+  }
+});
+
+// Hàm làm tròn số - đảm bảo hiển thị đúng 2 chữ số thập phân
+function formatNumber(value, decimals = 2) {
+  if (value === undefined || value === null) return '--';
+  const num = parseFloat(value);
+  if (isNaN(num)) return '--';
+  return num.toFixed(decimals);
+}
+
+function pushChartData(pm25, eco2, tvoc, temp, hum) {
+  const ts = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  chartData.labels.push(ts);
+  chartData.pm25.push(parseFloat(formatNumber(pm25, 1)));
+  chartData.eco2.push(parseFloat(formatNumber(eco2 / 10, 1)));
+  chartData.tvoc.push(parseFloat(formatNumber(tvoc / 10, 1)));
+  chartData.temp.push(parseFloat(formatNumber(temp, 1)));
+  chartData.hum.push(parseFloat(formatNumber(hum, 1)));
+  
+  if (chartData.labels.length > MAX_POINTS) {
+    chartData.labels.shift();
+    Object.values(chartData).forEach(arr => { if (arr.length > MAX_POINTS) arr.shift(); });
+  }
+  histChart.update('none');
+}
+
+async function api(url, method='GET', label='') {
+  try {
+    const r = await fetch(url, { method });
+    const d = await r.json();
+    console.log(`[${label}]`, d.message || (d.success ? 'OK' : 'Failed'));
+    if (label === 'RTL') alert('Đang quay về điểm xuất phát!');
+  } catch(e) { console.error(e); }
+}
+
+function setMode(m) {
+  fetch('/set-mode', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ mode: m }) });
+}
+
+async function pollTelemetry() {
+  try {
+    const [vi, tele] = await Promise.all([
+      fetch('/vehicle-info').then(r => r.json()),
+      fetch('/api/telemetry').then(r => r.json())
+    ]);
+
+    if (vi.success) {
+      // Làm tròn tất cả thông số bay về 2 chữ số thập phân
+      document.getElementById('t-alt').textContent = formatNumber(vi.alt, 1);
+      document.getElementById('t-spd').textContent = formatNumber(vi.speed, 2);
+      document.getElementById('t-bat').textContent = Math.round(vi.battery);
+      document.getElementById('t-hdg').textContent = formatNumber(vi.heading, 0);
+      document.getElementById('t-mode').textContent = vi.mode || '--';
+      document.getElementById('t-armed').textContent = vi.armed ? '● ARMED' : '○ DISARMED';
+      document.getElementById('t-armed').style.color = vi.armed ? '#EF4444' : '#10B981';
+
+      const altPct = Math.min(100, (vi.alt / 200) * 100);
+      document.getElementById('alt-fill').style.width = altPct + '%';
+
+      const batBar = document.getElementById('t-bat-bar');
+      const batPct = Math.round(vi.battery);
+      batBar.style.width = batPct + '%';
+      batBar.style.background = batPct > 50 ? '#10B981' : batPct > 20 ? '#F59E0B' : '#EF4444';
+    }
+
+    if (tele.success) {
+      const s = tele.telemetry;
+      
+      // Cập nhật tất cả thông số quan trắc không khí với làm tròn 2 chữ số
+      document.getElementById('s-pm25').textContent = formatNumber(s.pm25, 1);
+      document.getElementById('s-pm10').textContent = formatNumber(s.pm10 || s.pm25 * 1.5, 1);
+      document.getElementById('s-eco2').textContent = formatNumber(s.eco2 || s.co2, 0);
+      document.getElementById('s-tvoc').textContent = formatNumber(s.tvoc, 0);
+      document.getElementById('s-temp').textContent = formatNumber(s.temp, 1);
+      document.getElementById('s-hum').textContent = formatNumber(s.hum, 1);
+      
+      // Thanh tiến trình
+      const pm25 = parseFloat(s.pm25) || 0;
+      const pm10 = parseFloat(s.pm10) || pm25 * 1.5;
+      const eco2 = parseFloat(s.eco2) || 0;
+      const tvoc = parseFloat(s.tvoc) || 0;
+      
+      document.getElementById('bar-pm25').style.width = Math.min(100, (pm25 / 300) * 100) + '%';
+      document.getElementById('bar-pm10').style.width = Math.min(100, (pm10 / 400) * 100) + '%';
+      document.getElementById('bar-eco2').style.width = Math.min(100, (eco2 / 2000) * 100) + '%';
+      document.getElementById('bar-tvoc').style.width = Math.min(100, (tvoc / 1000) * 100) + '%';
+      
+      // AQI
+      const aqi = s.aqi || 1;
+      const aqiEl = document.getElementById('s-aqi');
+      const aqiContainer = document.getElementById('aqi-container');
+      aqiEl.textContent = aqi;
+      
+      let aqiText = '', aqiClass = '';
+      switch(aqi) {
+        case 1: aqiText = 'Tốt - Không ảnh hưởng đến sức khỏe'; aqiClass = 'aqi-1'; break;
+        case 2: aqiText = 'Trung bình - Nhóm nhạy cảm nên hạn chế ra ngoài'; aqiClass = 'aqi-2'; break;
+        case 3: aqiText = 'Kém - Ảnh hưởng đến sức khỏe nếu tiếp xúc lâu'; aqiClass = 'aqi-3'; break;
+        case 4: aqiText = 'Xấu - Mọi người nên hạn chế hoạt động ngoài trời'; aqiClass = 'aqi-4'; break;
+        case 5: aqiText = 'Nguy hại - Cảnh báo khẩn cấp về sức khỏe'; aqiClass = 'aqi-5'; break;
+        default: aqiText = '--'; aqiClass = 'aqi-1';
+      }
+      document.getElementById('s-aqi-label').textContent = aqiText;
+      aqiContainer.className = `aqi-display ${aqiClass}`;
+      
+      // Thêm vào biểu đồ
+      pushChartData(pm25, eco2, tvoc, s.temp || 0, s.hum || 0);
+    }
+  } catch(err) {
+    console.error('Poll telemetry error:', err);
+  }
+}
+
+setInterval(pollTelemetry, 1500);
+pollTelemetry();
+</script>
+{% endblock %}

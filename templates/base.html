@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}UAV Ground Control{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Roboto+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  {% block head_extra %}{% endblock %}
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <div class="brand-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+            <path d="M12 2L4 7v10l8 5 8-5V7L12 2z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+            <circle cx="12" cy="12" r="2.5" fill="currentColor"/>
+          </svg>
+        </div>
+        <span class="brand-text">UAV<span class="brand-sub">GCS</span></span>
+      </div>
+
+      <nav class="sidebar-nav">
+        <a href="/" class="nav-item {% if request.path == '/' %}active{% endif %}">
+          <svg viewBox="0 0 20 20" fill="none"><path d="M2 10.5l8-7 8 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 8.8V17h4.5v-4h3V17H16V8.8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span>Mission Plan</span>
+        </a>
+        <a href="/telemetry" class="nav-item {% if request.path == '/telemetry' %}active{% endif %}">
+          <svg viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="7.5" stroke="currentColor" stroke-width="1.5"/><path d="M10 5.5v5l3 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          <span>Air Analytics</span>
+        </a>
+        <a href="/stream" class="nav-item {% if request.path == '/stream' %}active{% endif %}">
+          <svg viewBox="0 0 20 20" fill="none"><rect x="2" y="4" width="16" height="11" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M7 15.5l3 2 3-2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span>Camera feed</span>
+        </a>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="status-pill" id="arm-pill">
+          <span class="status-dot"></span>
+          <span id="arm-label">DISARMED</span>
+        </div>
+        <div class="mode-badge" id="mode-badge">MANUAL</div>
+      </div>
+    </aside>
+
+    <main class="main-area">
+      <header class="topbar">
+        <div class="topbar-left">
+          {% block topbar_title %}<h1 class="page-title">Ground Control</h1>{% endblock %}
+        </div>
+        <div class="topbar-right">
+          <div class="battery-chip" id="bat-chip">
+            <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
+              <rect x="1.5" y="5.5" width="14" height="9" rx="2" stroke="currentColor" stroke-width="1.3"/>
+              <path d="M16 8.5v3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+              <rect id="bat-fill" x="3" y="7" width="10" height="6" rx="1" fill="currentColor"/>
+            </svg>
+            <span id="bat-text">--</span>
+          </div>
+          <div class="gps-chip">
+            <svg width="14" height="14" viewBox="0 0 20 20" fill="none">
+              <circle cx="10" cy="9" r="3" stroke="currentColor" stroke-width="1.3"/>
+              <path d="M10 2v2M10 16v2M2 9h2M16 9h2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+            </svg>
+            <span id="gps-coords">--</span>
+          </div>
+        </div>
+      </header>
+
+      <div class="content">
+        {% block main_content %}{% endblock %}
+      </div>
+    </main>
+  </div>
+
+  <script>
+  async function pollUAVState() {
+    try {
+      const r = await fetch('/api/uav-state');
+      const d = await r.json();
+      if (!d.success) return;
+      
+      const s = d.state;
+      
+      // Update System Topbar & Sidebar
+      const pct = Math.round(s.battery);
+      document.getElementById('bat-text').textContent = pct + '%';
+      document.getElementById('bat-fill').setAttribute('width', Math.max(1, pct / 100 * 10));
+      document.getElementById('bat-chip').className = 'battery-chip ' + (pct > 50 ? 'ok' : pct > 20 ? 'warn' : 'crit');
+      
+      if(s.gps.lat !== 0) document.getElementById('gps-coords').textContent = `${s.gps.lat.toFixed(5)}, ${s.gps.lon.toFixed(5)}`;
+
+      const pill = document.getElementById('arm-pill');
+      pill.className = 'status-pill ' + (s.armed ? 'armed' : 'disarmed');
+      document.getElementById('arm-label').textContent = s.armed ? 'ARMED' : 'DISARMED';
+      
+      const modeBadge = document.getElementById('mode-badge');
+      modeBadge.textContent = s.mode || '--';
+      modeBadge.className = 'mode-badge mode-' + (s.mode || 'MANUAL').toLowerCase();
+
+      // Dispatch global event cho Map, Dashboard, Stream
+      const event = new CustomEvent('uav-data-update', { detail: { state: s } });
+      window.dispatchEvent(event);
+      
+    } catch(_) {}
+  }
+  setInterval(pollUAVState, 1000);
+  pollUAVState();
+  </script>
+  {% block body_script %}{% endblock %}
+</body>
+</html>
