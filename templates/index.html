@@ -7,42 +7,9 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
-  /* Reset và fix layout */
-  * {
-    box-sizing: border-box;
-  }
-  
-  /* Layout chính - fixed height */
-  .mission-layout {
-    display: flex;
-    gap: 20px;
-    height: calc(100vh - 100px);
-    overflow: hidden;
-  }
-  
-  /* Map container */
-  #map {
-    flex: 1;
-    height: 100%;
-    border-radius: 16px;
-    border: 1px solid var(--border);
-    min-width: 0;
-  }
-  
-  /* Panel bên phải - scrollable */
   .mission-panel {
     width: 340px;
-    flex-shrink: 0;
-    height: 100%;
-    overflow-y: auto;
-    overflow-x: hidden;
-    padding-right: 6px;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
   }
-  
-  /* Card style */
   .card-modern {
     background: var(--surface);
     border-radius: 14px;
@@ -315,11 +282,12 @@
   .data-item:hover {
     background: var(--surface2);
   }
-  .data-item.aqi-1 { border-left: 2px solid #10B981; }
-  .data-item.aqi-2 { border-left: 2px solid #84CC16; }
-  .data-item.aqi-3 { border-left: 2px solid #F59E0B; }
-  .data-item.aqi-4 { border-left: 2px solid #F97316; }
-  .data-item.aqi-5 { border-left: 2px solid #EF4444; }
+  .data-item.aqi-1 { border-left: 2px solid #00E400; }
+  .data-item.aqi-2 { border-left: 2px solid #EAB308; }
+  .data-item.aqi-3 { border-left: 2px solid #FF7E00; }
+  .data-item.aqi-4 { border-left: 2px solid #FF0000; }
+  .data-item.aqi-5 { border-left: 2px solid #8F3F97; }
+  .data-item.aqi-6 { border-left: 2px solid #7E0023; }
   
   /* Export buttons */
   .export-row {
@@ -441,7 +409,7 @@
   <div class="mission-panel">
     <!-- 1. Data Logging -->
     <div class="card-modern">
-      <div class="card-header">📝 Ghi dữ liệu cảm biến</div>
+      <div class="card-header">Ghi dữ liệu cảm biến</div>
       <div class="card-body">
         <div class="data-logging-row">
           <span style="font-size: 0.7rem;">Tự động thu thập khi đến waypoint</span>
@@ -455,32 +423,40 @@
 
     <!-- 2. Chất lượng không khí -->
     <div class="card-modern">
-      <div class="card-header">🌍 Chất lượng không khí</div>
+      <div class="card-header">Chất lượng không khí</div>
       <div class="card-body">
         <div class="sensor-grid">
           <div class="sensor-item">
             <div class="label">PM2.5</div>
-            <div class="value"><span id="quick-pm25">--</span><span class="unit">µg</span></div>
+            <div class="value"><span id="quick-pm25">--</span><span class="unit"></span></div>
           </div>
           <div class="sensor-item">
             <div class="label">CO₂</div>
-            <div class="value"><span id="quick-eco2">--</span><span class="unit">ppm</span></div>
+            <div class="value"><span id="quick-eco2">--</span><span class="unit"></span></div>
           </div>
           <div class="sensor-item">
             <div class="label">TVOC</div>
-            <div class="value"><span id="quick-tvoc">--</span><span class="unit">ppb</span></div>
+            <div class="value"><span id="quick-tvoc">--</span><span class="unit"></span></div>
+          </div>
+          <div class="sensor-item">
+            <div class="label">CO</div>
+            <div class="value"><span id="quick-co" style="color:#F97316;"></span><span class="unit"></span></div>
+          </div>
+          <div class="sensor-item">
+            <div class="label">NO₂</div>
+            <div class="value"><span id="quick-no2" style="color:#A855F7;"></span><span class="unit"></span></div>
           </div>
           <div class="sensor-item">
             <div class="label">Nhiệt độ</div>
-            <div class="value"><span id="quick-temp">--</span><span class="unit">°C</span></div>
+            <div class="value"><span id="quick-temp">--</span><span class="unit"></span></div>
           </div>
           <div class="sensor-item">
             <div class="label">Độ ẩm</div>
-            <div class="value"><span id="quick-hum">--</span><span class="unit">%</span></div>
+            <div class="value"><span id="quick-hum">--</span><span class="unit"></span></div>
           </div>
           <div class="sensor-item">
             <div class="label">AQI</div>
-            <div class="value"><span id="quick-aqi" style="font-weight: 700;">--</span></div>
+            <div class="value"><span id="quick-aqi" style="font-weight: 700;"></span></div>
           </div>
         </div>
       </div>
@@ -489,7 +465,7 @@
     <!-- 3. Thu thập dữ liệu (Hold progress) -->
     <div id="hold-progress" class="hold-progress">
       <div class="hold-header">
-        <span>📊 Đang thu thập dữ liệu</span>
+        <span>Đang thu thập dữ liệu</span>
         <span id="hold-counter">0/10</span>
       </div>
       <div class="progress-bar-bg">
@@ -500,12 +476,12 @@
 
     <!-- 4. Trạng thái UAV -->
     <div class="card-modern">
-      <div class="card-header">🚁 Trạng thái UAV</div>
+      <div class="card-header">Trạng thái UAV</div>
       <div class="card-body">
         <div class="stats-row">
           <div class="stat-box">
             <div class="label">Độ cao</div>
-            <div class="value" id="alt-val">-- m</div>
+            <div class="value" id="alt-val">N/A</div>
           </div>
           <div class="stat-box">
             <div class="label">Vận tốc</div>
@@ -521,7 +497,7 @@
 
     <!-- 5. Điều khiển UAV -->
     <div class="card-modern">
-      <div class="card-header">🎮 Điều khiển UAV</div>
+      <div class="card-header">Điều khiển UAV</div>
       <div class="card-body">
         <div class="btn-row">
           <button class="btn btn-danger" onclick="armVehicle()">ARM</button>
@@ -533,7 +509,7 @@
 
     <!-- 6. Bản đồ & Waypoint -->
     <div class="card-modern">
-      <div class="card-header">🗺️ Bản đồ & Waypoint</div>
+      <div class="card-header">Bản đồ & Waypoint</div>
       <div class="card-body">
         <!-- Map type buttons -->
         <div class="map-tools-row">
@@ -542,12 +518,12 @@
             <button class="btn map-type-btn" onclick="setMapType('satellite',this)">Vệ tinh</button>
             <button class="btn map-type-btn" onclick="setMapType('terrain',this)">Địa hình</button>
           </div>
-          <button class="btn btn-primary" onclick="centerToUAV()">📍 Định vị</button>
+          <button class="btn btn-primary" onclick="centerToUAV()">Định vị</button>
         </div>
         
         <!-- Waypoint list -->
         <div style="margin-top: 10px;">
-          <div style="font-size: 0.65rem; color: var(--txt3); margin-bottom: 5px;">📌 Danh sách waypoint</div>
+          <div style="font-size: 0.65rem; color: var(--txt3); margin-bottom: 5px;">Danh sách waypoint</div>
           <div id="wp-list-wrap" class="wp-list">
             <div style="text-align:center; color:var(--txt3); padding: 8px;" id="wp-empty">
               ✏️ Click lên bản đồ để thêm
@@ -562,10 +538,10 @@
         
         <!-- Mission buttons -->
         <div class="btn-row">
-          <button class="btn btn-ghost" onclick="clearWaypoints()">🗑️ Xóa</button>
-          <button class="btn btn-primary" onclick="uploadMission()">📤 Upload</button>
-          <button class="btn btn-warn" onclick="startMission()">▶️ Start</button>
-          <button class="btn btn-ghost" onclick="stopMission()">⏹️ Stop</button>
+          <button class="btn btn-ghost" onclick="clearWaypoints()">Xóa</button>
+          <button class="btn btn-primary" onclick="uploadMission()">Upload</button>
+          <button class="btn btn-warn" onclick="startMission()">Start</button>
+          <button class="btn btn-ghost" onclick="stopMission()">Stop</button>
         </div>
         
         <!-- Mission progress -->
@@ -576,10 +552,9 @@
       </div>
     </div>
 
-    <!-- 7. Dữ liệu đã thu thập -->
     <div class="card-modern">
       <div class="card-header">
-        📊 Dữ liệu đã thu thập
+        Dữ liệu đã thu thập
         <span id="data-count" style="float: right; font-size: 0.6rem;">(0)</span>
       </div>
       <div class="card-body">
@@ -587,15 +562,47 @@
           <div style="text-align:center; color:var(--txt3); padding: 12px;">Chưa có dữ liệu</div>
         </div>
         <div class="export-row">
-          <button class="btn btn-primary" onclick="exportDataCSV()">📥 CSV</button>
-          <button class="btn btn-ghost" onclick="exportDataJSON()">📄 JSON</button>
+          <button class="btn btn-primary" onclick="exportDataCSV()">CSV (Mission)</button>
+          <button class="btn btn-ghost" onclick="exportDataJSON()">JSON (Mission)</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card-modern">
+      <div class="card-header">CSV Logger (30 samples)</div>
+      <div class="card-body">
+        <div style="margin-bottom: 12px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <span style="font-size: 0.7rem;">Vị trí ghi chú:</span>
+            <input type="text" id="csv-position" placeholder="Tên vị trí..." style="background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; font-size: 0.7rem; width: 150px;">
+          </div>
+          <button class="btn btn-primary" id="start-csv-btn" style="width: 100%; margin-bottom: 8px;" onclick="startCSVLogging()">
+            Bắt đầu thu thập 30 mẫu
+          </button>
+        </div>
+
+        <div id="csv-progress" style="display: none;">
+          <div style="font-size: 0.65rem; margin-bottom: 4px;">
+            <span>Đang thu thập dữ liệu CSV</span>
+            <span id="csv-counter" style="float: right;">0/30</span>
+          </div>
+          <div class="progress-bar-bg" style="height: 6px;">
+            <div id="csv-bar" class="progress-bar-fill" style="width: 0%; background: var(--accent);"></div>
+          </div>
+          <div id="csv-status" style="font-size: 0.6rem; color: var(--txt3); margin-top: 4px;"></div>
+        </div>
+        
+        <div id="csv-download-section" style="display: none; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border);">
+          <button class="btn btn-ok" onclick="downloadCSVFile()" style="background: var(--ok); color: white; width: 100%;">
+            ⬇️ Tải file CSV về máy
+          </button>
         </div>
       </div>
     </div>
 
     <!-- 8. System Log -->
     <div class="card-modern">
-      <div class="card-header">📋 System Log</div>
+      <div class="card-header">System Log</div>
       <div class="card-body" style="padding: 8px;">
         <div class="event-log" id="log"></div>
       </div>
@@ -604,6 +611,22 @@
 </div>
 
 <script>
+
+function getAQILevelVN(aqiValue) {
+  const aqi = Number(aqiValue);
+  if (!Number.isFinite(aqi) || aqi <= 50) return 1;
+  if (aqi <= 100) return 2;
+  if (aqi <= 150) return 3;
+  if (aqi <= 200) return 4;
+  if (aqi <= 300) return 5;
+  return 6;
+}
+
+function getAQIColorVN(aqiValue) {
+  const colors = {1:'#00E400', 2:'#EAB308', 3:'#FF7E00', 4:'#FF0000', 5:'#8F3F97', 6:'#7E0023'};
+  return colors[getAQILevelVN(aqiValue)] || '#94A3B8';
+}
+
 function formatNumberQuick(value, decimals = 1) {
   if (value === undefined || value === null) return '--';
   const num = parseFloat(value);
@@ -611,22 +634,162 @@ function formatNumberQuick(value, decimals = 1) {
   return num.toFixed(decimals);
 }
 
+let csvPollingInterval = null;
+
+async function startCSVLogging() {
+  const position = document.getElementById('csv-position').value || 'unknown_location';
+  
+  try {
+    const response = await fetch('/start-csv-logging', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        position: position,
+        max_samples: 30,
+        filename: `sensor_data_${Date.now()}.csv`
+      })
+    });
+    const data = await response.json();
+    
+    if (data.success) {
+      // Hiển thị progress bar
+      document.getElementById('csv-progress').style.display = 'block';
+      document.getElementById('csv-download-section').style.display = 'none';
+      document.getElementById('start-csv-btn').disabled = true;
+      document.getElementById('start-csv-btn').textContent = '⏳ Đang thu thập...';
+      
+      // Bắt đầu polling để cập nhật tiến độ
+      if (csvPollingInterval) clearInterval(csvPollingInterval);
+      csvPollingInterval = setInterval(pollCSVStatus, 1000);
+      
+      log(`Đã bắt đầu thu thập 30 mẫu dữ liệu tại vị trí: ${position}`, 'ok');
+    } else {
+      log(`Lỗi: ${data.message}`, 'err');
+    }
+  } catch (err) {
+    log(`Lỗi kết nối: ${err.message}`, 'err');
+  }
+}
+
+async function pollCSVStatus() {
+  try {
+    const response = await fetch('/csv-logging-status');
+    const data = await response.json();
+    
+    if (data.success && data.status) {
+      const status = data.status;
+      const collected = status.collected;
+      const maxSamples = status.max_samples;
+      const percent = (collected / maxSamples) * 100;
+      
+      document.getElementById('csv-counter').textContent = `${collected}/${maxSamples}`;
+      document.getElementById('csv-bar').style.width = percent + '%';
+      document.getElementById('csv-status').textContent = status.active ? 
+        `Đang thu thập... (${collected}/${maxSamples})` : 
+        `Hoàn thành! Đã thu thập ${collected} mẫu.`;
+      
+      // Nếu đã hoàn thành hoặc không còn active
+      if (!status.active || collected >= maxSamples) {
+        if (csvPollingInterval) clearInterval(csvPollingInterval);
+        csvPollingInterval = null;
+        
+        document.getElementById('start-csv-btn').disabled = false;
+        document.getElementById('start-csv-btn').textContent = 'Bắt đầu thu thập 30 mẫu';
+        
+        if (collected > 0) {
+          document.getElementById('csv-download-section').style.display = 'block';
+          log(`✅ Đã thu thập xong ${collected} mẫu dữ liệu! Bạn có thể tải file CSV về.`, 'ok');
+        }
+        
+        // Ẩn progress sau 3 giây nếu hoàn thành
+        if (collected >= maxSamples) {
+          setTimeout(() => {
+            document.getElementById('csv-progress').style.display = 'none';
+          }, 3000);
+        }
+      }
+    }
+  } catch (err) {
+    console.error('Polling error:', err);
+  }
+}
+
+async function downloadCSVFile() {
+  try {
+    window.open('/download-csv', '_blank');
+    log('Đang tải file CSV về máy...', 'info');
+  } catch (err) {
+    log(`Lỗi tải file: ${err.message}`, 'err');
+  }
+}
+
+function updateDataList(dataPoints) {
+  const container = document.getElementById('data-list');
+  if (!container) return;
+  
+  if (!dataPoints || dataPoints.length === 0) {
+    container.innerHTML = '<div style="text-align:center;color:var(--txt3);padding:20px;">Chưa có dữ liệu</div>';
+    return;
+  }
+  
+  container.innerHTML = dataPoints.slice().reverse().map(point => {
+    const date = new Date(point.time);
+    const timeStr = date.toLocaleTimeString('vi-VN');
+    const aqiClass = `aqi-${getAQILevelVN(point.aqi)}`;
+    
+    return `
+      <div class="data-item ${aqiClass}" onclick="flyToDataPoint(${point.lat}, ${point.lon})">
+        <div style="display: flex; justify-content: space-between;">
+          <strong>WP${point.waypoint_index + 1}</strong>
+          <span style="font-size: 0.65rem;">${timeStr}</span>
+        </div>
+        <div style="display: flex; gap: 12px; margin-top: 4px; font-size: 0.7rem;">
+          <span>📍 ${point.lat.toFixed(5)}, ${point.lon.toFixed(5)}</span>
+          <span>⬆️ ${point.alt.toFixed(0)}m</span>
+        </div>
+        <div style="display: flex; gap: 8px; margin-top: 4px; flex-wrap: wrap;">
+          <span style="background: #EF4444; color:#fff; padding: 2px 6px; border-radius: 4px;">PM2.5: ${point.pm25.toFixed(1)}</span>
+          <span style="background: #F59E0B; color:#fff; padding: 2px 6px; border-radius: 4px;">CO₂: ${point.eco2.toFixed(0)}</span>
+          ${point.co  != null ? `<span style="background: #F97316; color:#fff; padding: 2px 6px; border-radius: 4px;">CO: ${point.co.toFixed(2)}</span>` : ''}
+          ${point.no2 != null ? `<span style="background: #A855F7; color:#fff; padding: 2px 6px; border-radius: 4px;">NO₂: ${point.no2.toFixed(1)}</span>` : ''}
+          <span style="background: #8B5CF6; color:#fff; padding: 2px 6px; border-radius: 4px;">AQI: ${point.aqi}</span>
+        </div>
+        <div style="display: flex; gap: 8px; margin-top: 4px; font-size: 0.65rem; color: var(--txt3);">
+          <span>🌡️ ${point.temp.toFixed(1)}°C</span>
+          <span>💧 ${point.hum.toFixed(1)}%</span>
+          <span>📊 ${point.sample_count || 0} mẫu</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
 async function updateAirQualityDisplay() {
   try {
     const tele = await fetch('/api/telemetry').then(r => r.json());
     if (tele.success && tele.telemetry) {
       const s = tele.telemetry;
-      document.getElementById('quick-pm25').innerHTML = formatNumberQuick(s.pm25, 1) + '<span class="unit">µg</span>';
-      document.getElementById('quick-eco2').innerHTML = formatNumberQuick(s.eco2, 0) + '<span class="unit">ppm</span>';
-      document.getElementById('quick-tvoc').innerHTML = formatNumberQuick(s.tvoc, 0) + '<span class="unit">ppb</span>';
-      document.getElementById('quick-temp').innerHTML = formatNumberQuick(s.temp, 1) + '<span class="unit">°C</span>';
-      document.getElementById('quick-hum').innerHTML = formatNumberQuick(s.hum, 1) + '<span class="unit">%</span>';
+      document.getElementById('quick-pm25').innerHTML = formatNumberQuick(s.pm25, 1) + '<span class="unit"> µg/m³</span>';
+      document.getElementById('quick-eco2').innerHTML = formatNumberQuick(s.eco2, 0) + '<span class="unit"> mg/m³</span>';
+      document.getElementById('quick-tvoc').innerHTML = formatNumberQuick(s.tvoc, 0) + '<span class="unit"> µg/m³</span>';
       
-      const aqi = s.aqi || 1;
+      // Fix: Display CO with proper formatting
+      const coValue = s.co !== undefined && s.co !== null ? s.co : '--';
+      const coDisplay = coValue !== '--' ? formatNumberQuick(coValue, 2) : '--';
+      document.getElementById('quick-co').innerHTML = coDisplay + (coValue !== '--' ? '<span class="unit"> mg/m³</span>' : '');
+      
+      // Fix: Display NO2 with proper formatting
+      const no2Value = s.no2 !== undefined && s.no2 !== null ? s.no2 : '--';
+      const no2Display = no2Value !== '--' ? formatNumberQuick(no2Value, 1) : '--';
+      document.getElementById('quick-no2').innerHTML = no2Display + (no2Value !== '--' ? '<span class="unit"> µg/m³</span>' : '');
+      
+      document.getElementById('quick-temp').innerHTML = formatNumberQuick(s.temp, 1) + '<span class="unit"> °C</span>';
+      document.getElementById('quick-hum').innerHTML = formatNumberQuick(s.hum, 1) + '<span class="unit"> %</span>';
+      
+      const aqi = s.aqi ?? 0;
       const aqiEl = document.getElementById('quick-aqi');
       aqiEl.textContent = aqi;
-      const aqiColors = {1: '#10B981', 2: '#84CC16', 3: '#F59E0B', 4: '#F97316', 5: '#EF4444'};
-      aqiEl.style.color = aqiColors[aqi] || '#94A3B8';
+      aqiEl.style.color = getAQIColorVN(aqi);
     }
   } catch(err) {
     console.error(err);

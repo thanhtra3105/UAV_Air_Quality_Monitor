@@ -10,23 +10,33 @@
       <span class="video-title" style="color: #fff; font-weight: 600; font-size: 0.9rem;">LIVE FEED - UAV_SENSOR_01</span>
     </div>
     
-    <div class="video-wrapper">
-      <img id="uav-stream" src="/video_feed" alt="UAV Stream" onerror="this.style.display='none'; useWebcam();">
-      <video id="webcam-mock" autoplay playsinline muted style="display:none;"></video>
+    <div class="video-wrapper" style="overflow: hidden; position: relative; background: #000;">
+      <img id="uav-stream" src="/video_feed" alt="UAV Stream" onerror="this.style.display='none'; useWebcam();" style="display: block; width: 100%; height: auto;">
+      <video id="webcam-mock" autoplay playsinline muted style="display:none; width: 100%; height: auto;"></video>
       
       <div id="camera-placeholder" class="placeholder-overlay">
         <div class="spinner" style="width: 40px; height: 40px; border: 4px solid #333; border-top-color: var(--accent); border-radius: 50%; animation: spin 1s linear infinite;"></div>
         <p>Đang kết nối tín hiệu...</p>
       </div>
+      
+      <!-- Zoom instructions overlay -->
+      <div class="zoom-instructions" style="position: absolute; bottom: 10px; left: 10px; background: rgba(0,0,0,0.6); padding: 5px 10px; border-radius: 6px; font-size: 0.65rem; color: #ccc; pointer-events: none;">
+        💡 Ctrl+Scroll = Zoom | Right-click+Drag = Pan | Double-click = Reset
+      </div>
     </div>
 
-    <div class="video-controls" style="padding: 12px 16px; background: #1a1a1a; display: flex; gap: 8px; flex-wrap: wrap;">
+    <div class="video-controls" style="padding: 12px 16px; background: #1a1a1a; display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
       <button class="btn btn-ghost btn-sm" id="snapshot-btn" onclick="takeSnapshot()" style="color: #ccc; border-color: #444;">
         📸 Snapshot
       </button>
       <button class="btn btn-ghost btn-sm" id="record-btn" onclick="toggleRecording()" style="color: #ccc; border-color: #444;">
         ● Record
       </button>
+      <div style="display: flex; gap: 4px; margin-left: auto;">
+        <button class="btn btn-ghost btn-sm" id="zoom-in-btn" title="Zoom In (Ctrl+Scroll)" style="color: #ccc;">🔍+</button>
+        <button class="btn btn-ghost btn-sm" id="zoom-out-btn" title="Zoom Out (Ctrl+Scroll)" style="color: #ccc;">🔍-</button>
+        <button class="btn btn-ghost btn-sm" id="zoom-reset-btn" title="Reset Zoom (Double-click)" style="color: #ccc;">⟲</button>
+      </div>
       <button class="btn btn-ghost btn-sm" id="cam-toggle-btn" onclick="toggleCamera()" style="margin-left: auto;">
         Dừng Camera
       </button>
@@ -39,7 +49,7 @@
         <button onclick="closeSnapshot()" style="background: rgba(0,0,0,0.7); color: white; border: none; border-radius: 50%; width: 30px; height: 30px; cursor: pointer;">×</button>
       </div>
       <div style="padding: 12px; text-align: center;">
-        <a id="snapshot-download" download style="color: var(--accent); text-decoration: none;">📥 Tải xuống</a>
+        <a id="snapshot-download" download style="color: var(--accent); text-decoration: none;">Tải xuống</a>
       </div>
     </div>
   </div>
@@ -50,7 +60,7 @@
       <div style="display:flex;flex-direction:column;gap:12px;margin-top:8px;">
         <div style="display: flex; justify-content: space-between; align-items: center;">
           <span style="font-size:0.8rem;color:var(--txt3)">Độ cao</span>
-          <strong style="font-family:'Roboto Mono',monospace;font-size:1.1rem;" id="ov-alt">-- m</strong>
+          <strong style="font-family:'Roboto Mono',monospace;font-size:1.1rem;color: var(--warn);" id="ov-alt">N/A</strong>
         </div>
         <div style="display: flex; justify-content: space-between; align-items: center;">
           <span style="font-size:0.8rem;color:var(--txt3)">Vận tốc</span>
@@ -62,7 +72,7 @@
         </div>
         <div style="display: flex; justify-content: space-between; align-items: center;">
           <span style="font-size:0.8rem;color:var(--txt3)">Pin</span>
-          <strong style="font-family:'Roboto Mono',monospace;font-size:1.1rem;" id="ov-bat">--%</strong>
+          <strong style="font-family:'Roboto Mono',monospace;font-size:1.1rem;color: var(--warn);" id="ov-bat">N/A</strong>
         </div>
       </div>
     </div>
@@ -74,10 +84,16 @@
           <span style="color:var(--txt3); font-family: 'Inter', sans-serif;">PM2.5</span><strong id="ov-pm25">-- µg/m³</strong>
         </div>
         <div style="display:flex;justify-content:space-between;align-items:center;">
-          <span style="color:var(--txt3); font-family: 'Inter', sans-serif;">eCO₂</span><strong id="ov-eco2">-- ppm</strong>
+          <span style="color:var(--txt3); font-family: 'Inter', sans-serif;">CO₂</span><strong id="ov-eco2">-- mg/m³</strong>
         </div>
         <div style="display:flex;justify-content:space-between;align-items:center;">
-          <span style="color:var(--txt3); font-family: 'Inter', sans-serif;">TVOC</span><strong id="ov-tvoc">-- ppb</strong>
+          <span style="color:var(--txt3); font-family: 'Inter', sans-serif;">TVOC</span><strong id="ov-tvoc">-- µg/m³</strong>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <span style="color:var(--txt3); font-family: 'Inter', sans-serif;">CO</span><strong id="ov-co" style="color:#F97316;">-- mg/m³</strong>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <span style="color:var(--txt3); font-family: 'Inter', sans-serif;">NO₂</span><strong id="ov-no2" style="color:#A855F7;">-- µg/m³</strong>
         </div>
         <div style="display:flex;justify-content:space-between;align-items:center;">
           <span style="color:var(--txt3); font-family: 'Inter', sans-serif;">Nhiệt / Ẩm</span><strong><span id="ov-temp">--</span>°C / <span id="ov-hum">--</span>%</strong>
@@ -102,6 +118,11 @@
 
 <style>
   @keyframes spin { 100% { transform: rotate(360deg); } }
+  @keyframes slideIn {
+    from { transform: translateX(100%); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+  
   .snapshot-notification {
     position: fixed;
     bottom: 20px;
@@ -113,9 +134,27 @@
     animation: slideIn 0.3s ease;
     z-index: 1000;
   }
-  @keyframes slideIn {
-    from { transform: translateX(100%); opacity: 0; }
-    to { transform: translateX(0); opacity: 1; }
+  
+  #uav-stream {
+    transition: transform 0.05s ease-out;
+    transform-origin: 0 0;
+    will-change: transform;
+  }
+  
+  .video-wrapper {
+    overflow: hidden;
+    position: relative;
+    background: #000;
+    min-height: 480px;
+    cursor: default;
+  }
+  
+  .zoom-instructions {
+    font-family: 'Inter', sans-serif;
+    font-size: 0.65rem;
+    background: rgba(0,0,0,0.7);
+    backdrop-filter: blur(4px);
+    z-index: 10;
   }
 </style>
 {% endblock %}
@@ -128,6 +167,7 @@
   let isRecording = false;
   let recordingStartTime = null;
   let recordingInterval = null;
+  let _recordingFilename = null;
 
   async function useWebcam() {
     console.log("Không tìm thấy luồng UAV, chuyển sang chế độ Webcam Mock...");
@@ -159,25 +199,22 @@
     const btn = document.getElementById('snapshot-btn');
     btn.disabled = true;
     btn.textContent = "📸 Đang chụp...";
-    
     try {
       const response = await fetch('/camera/snapshot', { method: 'POST' });
       const data = await response.json();
-      
       if (data.success) {
-        // Hiển thị preview
+        const imageUrl = `/camera_captures/${data.filename}`;
+        const imgResp = await fetch(imageUrl);
+        const blob = await imgResp.blob();
+        const blobUrl = URL.createObjectURL(blob);
+
         const preview = document.getElementById('snapshot-preview');
         const img = document.getElementById('snapshot-img');
         const downloadLink = document.getElementById('snapshot-download');
-        
-        // Tạo URL tạm thời cho ảnh
-        const imageUrl = `/camera_captures/${data.filename}`;
-        img.src = imageUrl + '?t=' + Date.now();
-        downloadLink.href = imageUrl;
+        img.src = blobUrl;
+        downloadLink.href = blobUrl;
         downloadLink.download = data.filename;
         preview.style.display = 'block';
-        
-        // Hiển thị thông báo
         showNotification('Đã chụp ảnh!', 'success');
       } else {
         showNotification('Lỗi khi chụp ảnh', 'error');
@@ -197,29 +234,26 @@
   
   async function toggleRecording() {
     const btn = document.getElementById('record-btn');
-    
     if (!isRecording) {
-      // Bắt đầu ghi
       const response = await fetch('/camera/record/start', { method: 'POST' });
       const data = await response.json();
-      
       if (data.success) {
         isRecording = true;
+        _recordingFilename = data.filename;
         btn.textContent = "⏹️ Stop";
         btn.style.background = "#EF4444";
         btn.style.color = "white";
         document.getElementById('recording-dot').style.display = 'inline-block';
         document.getElementById('recording-status').style.display = 'block';
-        
         recordingStartTime = Date.now();
         recordingInterval = setInterval(updateRecordingTime, 1000);
         showNotification('Bắt đầu ghi hình', 'info');
+      } else {
+        showNotification('Lỗi khi bắt đầu ghi', 'error');
       }
     } else {
-      // Dừng ghi
       const response = await fetch('/camera/record/stop', { method: 'POST' });
       const data = await response.json();
-      
       if (data.success) {
         isRecording = false;
         btn.textContent = "● Record";
@@ -227,9 +261,30 @@
         btn.style.color = "#ccc";
         document.getElementById('recording-dot').style.display = 'none';
         document.getElementById('recording-status').style.display = 'none';
-        
         clearInterval(recordingInterval);
-        showNotification(`Đã lưu video: ${data.filename || 'thành công'}`, 'success');
+
+        const filename = data.filename || _recordingFilename;
+        if (filename) {
+          showNotification('Đang tải video...', 'info');
+          try {
+            const videoResp = await fetch(`/camera_captures/video/${filename}`);
+            const blob = await videoResp.blob();
+            const blobUrl = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = blobUrl;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(blobUrl);
+            showNotification(`Đã lưu: ${filename}`, 'success');
+          } catch(e) {
+            showNotification('Lỗi khi tải video', 'error');
+          }
+        }
+        _recordingFilename = null;
+      } else {
+        showNotification('Lỗi khi dừng ghi', 'error');
       }
     }
   }
@@ -253,62 +308,195 @@
     setTimeout(() => notification.remove(), 3000);
   }
 
-  function formatStreamNumber(value, decimals = 1) {
+  
+  function getStreamAQIDetails(aqiValue) {
+    const aqi = Number(aqiValue);
+    if (!Number.isFinite(aqi) || aqi <= 50) return { label: 'Tốt', color: '#00E400' };
+    if (aqi <= 100) return { label: 'Trung bình', color: '#EAB308' };
+    if (aqi <= 150) return { label: 'Kém', color: '#FF7E00' };
+    if (aqi <= 200) return { label: 'Xấu', color: '#FF0000' };
+    if (aqi <= 300) return { label: 'Rất xấu', color: '#8F3F97' };
+    return { label: 'Nguy hại', color: '#7E0023' };
+  }
+
+function formatStreamNumber(value, decimals = 1) {
     if (value === undefined || value === null) return '--';
     const num = parseFloat(value);
     if (isNaN(num)) return '--';
     return num.toFixed(decimals);
   }
 
-  async function updateOverlay() {
-    try {
-      const [vi, tele] = await Promise.all([
-        fetch('/vehicle-info').then(r => r.json()),
-        fetch('/api/telemetry').then(r => r.json())
-      ]);
-      if (vi.success) {
-        document.getElementById('ov-alt').textContent = formatStreamNumber(vi.alt, 1) + ' m';
-        document.getElementById('ov-spd').textContent = formatStreamNumber(vi.speed, 2) + ' m/s';
-        document.getElementById('ov-hdg').textContent = formatStreamNumber(vi.heading, 0) + '°';
-        document.getElementById('ov-bat').textContent = formatStreamNumber(vi.battery, 0) + '%';
-      }
-      if (tele.success) {
-        const s = tele.telemetry;
-        document.getElementById('ov-pm25').textContent = formatStreamNumber(s.pm25, 1) + ' µg/m³';
-        document.getElementById('ov-eco2').textContent = formatStreamNumber(s.eco2, 0) + ' ppm';
-        document.getElementById('ov-tvoc').textContent = formatStreamNumber(s.tvoc, 0) + ' ppb';
-        document.getElementById('ov-temp').textContent = formatStreamNumber(s.temp, 1);
-        document.getElementById('ov-hum').textContent = formatStreamNumber(s.hum, 1);
-        
-        const aqiEl = document.getElementById('ov-aqi');
-        const aqi = s.aqi || 1;
-        let aqiText = '', aqiColor = '';
-        switch(aqi) {
-          case 1: aqiText = 'Tốt'; aqiColor = '#10B981'; break;
-          case 2: aqiText = 'Trung bình'; aqiColor = '#84CC16'; break;
-          case 3: aqiText = 'Kém'; aqiColor = '#F59E0B'; break;
-          case 4: aqiText = 'Xấu'; aqiColor = '#F97316'; break;
-          case 5: aqiText = 'Nguy hại'; aqiColor = '#EF4444'; break;
-          default: aqiText = '--'; aqiColor = '#94A3B8';
-        }
-        aqiEl.textContent = `${aqi} - ${aqiText}`;
-        aqiEl.style.background = aqiColor;
-        aqiEl.style.padding = '4px 12px';
-        aqiEl.style.borderRadius = '20px';
-        aqiEl.style.color = 'white';
-      }
-    } catch(_) {}
-  }
+  window.addEventListener('uav-data-update', function(e) {
+    const s = e.detail.state || {};
+    const g = s.gps || {};
+    const sen = s.sensors || {};
 
-  setInterval(updateOverlay, 1500);
-  updateOverlay();
-  
-  // Ẩn preview khi click ra ngoài
+    document.getElementById('ov-alt').textContent = formatStreamNumber(g.alt, 1) + ' m';
+    document.getElementById('ov-spd').textContent = formatStreamNumber(g.speed, 2) + ' m/s';
+    document.getElementById('ov-hdg').textContent = formatStreamNumber(g.heading, 0) + '°';
+
+    const battery = Number(s.battery);
+    document.getElementById('ov-bat').textContent =
+      Number.isFinite(battery) ? battery.toFixed(1) + ' V' : 'N/A';
+
+    document.getElementById('ov-pm25').textContent = formatStreamNumber(sen.pm25, 1) + ' µg/m³';
+    document.getElementById('ov-eco2').textContent = formatStreamNumber(sen.eco2, 1) + ' mg/m³';
+    document.getElementById('ov-tvoc').textContent = formatStreamNumber(sen.tvoc, 1) + ' µg/m³';
+    document.getElementById('ov-co').textContent  = sen.co  != null ? formatStreamNumber(sen.co, 2)  + ' mg/m³' : '-- mg/m³';
+    document.getElementById('ov-no2').textContent = sen.no2 != null ? formatStreamNumber(sen.no2, 1) + ' µg/m³' : '-- µg/m³';
+    document.getElementById('ov-temp').textContent = formatStreamNumber(sen.temp, 1);
+    document.getElementById('ov-hum').textContent  = formatStreamNumber(sen.hum, 1);
+    // document.getElementById('ov-bat').textContent = Number(s.battery).toFixed(1) + ' V';
+
+    const aqi = sen.aqi ?? 0;
+    const aqiEl = document.getElementById('ov-aqi');
+    const aqiDetails = getStreamAQIDetails(aqi);
+    aqiEl.textContent = `${Math.round(aqi)} - ${aqiDetails.label}`;
+    aqiEl.style.background = aqiDetails.color;
+    aqiEl.style.color = 'white';
+  });
+
   document.addEventListener('click', function(e) {
     const preview = document.getElementById('snapshot-preview');
     if (preview.style.display === 'block' && !preview.contains(e.target) && e.target !== document.getElementById('snapshot-btn')) {
       closeSnapshot();
     }
   });
+
+  // ========== ZOOM + PAN FUNCTIONALITY ==========
+  let zoomLevel = 1;
+  let panX = 0, panY = 0;
+  let isPanning = false;
+  let startX = 0, startY = 0;
+  let startPanX = 0, startPanY = 0;
+
+  function updateTransform() {
+    if (uavStream) {
+      uavStream.style.transform = `scale(${zoomLevel}) translate(${panX}px, ${panY}px)`;
+    }
+  }
+
+  // Zoom with Ctrl + Wheel
+  if (uavStream) {
+    uavStream.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      if (e.ctrlKey) {
+        const rect = uavStream.getBoundingClientRect();
+        const mouseX = (e.clientX - rect.left) / (rect.width / zoomLevel);
+        const mouseY = (e.clientY - rect.top) / (rect.height / zoomLevel);
+        
+        const oldZoom = zoomLevel;
+        zoomLevel += e.deltaY * -0.005;
+        zoomLevel = Math.min(Math.max(1, zoomLevel), 3);
+        
+        // Adjust pan to zoom toward mouse position
+        if (zoomLevel !== oldZoom) {
+          panX = (panX - mouseX) * (zoomLevel / oldZoom) + mouseX;
+          panY = (panY - mouseY) * (zoomLevel / oldZoom) + mouseY;
+        }
+        
+        // Limit pan bounds
+        const maxPanX = (uavStream.clientWidth * (zoomLevel - 1)) / 2;
+        const maxPanY = (uavStream.clientHeight * (zoomLevel - 1)) / 2;
+        panX = Math.min(maxPanX, Math.max(-maxPanX, panX));
+        panY = Math.min(maxPanY, Math.max(-maxPanY, panY));
+        
+        updateTransform();
+      }
+    });
+
+    // Right-click + Drag to pan
+    uavStream.addEventListener('mousedown', (e) => {
+      if (e.button === 2 && zoomLevel > 1) {
+        e.preventDefault();
+        isPanning = true;
+        startX = e.clientX;
+        startY = e.clientY;
+        startPanX = panX;
+        startPanY = panY;
+        uavStream.style.cursor = 'grabbing';
+      }
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (isPanning) {
+        const dx = e.clientX - startX;
+        const dy = e.clientY - startY;
+        panX = startPanX + dx;
+        panY = startPanY + dy;
+        
+        // Limit pan bounds
+        const maxPanX = (uavStream.clientWidth * (zoomLevel - 1)) / 2;
+        const maxPanY = (uavStream.clientHeight * (zoomLevel - 1)) / 2;
+        panX = Math.min(maxPanX, Math.max(-maxPanX, panX));
+        panY = Math.min(maxPanY, Math.max(-maxPanY, panY));
+        
+        updateTransform();
+      }
+    });
+
+    window.addEventListener('mouseup', () => {
+      isPanning = false;
+      if (uavStream) uavStream.style.cursor = 'zoom-in';
+    });
+
+    // Double click reset
+    uavStream.addEventListener('dblclick', () => {
+      zoomLevel = 1;
+      panX = 0;
+      panY = 0;
+      updateTransform();
+    });
+
+    // Disable context menu when zoomed
+    uavStream.addEventListener('contextmenu', (e) => {
+      if (zoomLevel > 1) e.preventDefault();
+    });
+  }
+
+  // Button controls
+  const zoomInBtn = document.getElementById('zoom-in-btn');
+  const zoomOutBtn = document.getElementById('zoom-out-btn');
+  const zoomResetBtn = document.getElementById('zoom-reset-btn');
+
+  if (zoomInBtn) {
+    zoomInBtn.addEventListener('click', () => {
+      if (uavStream) {
+        const oldZoom = zoomLevel;
+        zoomLevel = Math.min(zoomLevel + 0.2, 3);
+        // Zoom toward center
+        panX = panX * (zoomLevel / oldZoom);
+        panY = panY * (zoomLevel / oldZoom);
+        updateTransform();
+      }
+    });
+  }
+
+  if (zoomOutBtn) {
+    zoomOutBtn.addEventListener('click', () => {
+      if (uavStream) {
+        const oldZoom = zoomLevel;
+        zoomLevel = Math.max(zoomLevel - 0.2, 1);
+        panX = panX * (zoomLevel / oldZoom);
+        panY = panY * (zoomLevel / oldZoom);
+        if (zoomLevel === 1) {
+          panX = 0;
+          panY = 0;
+        }
+        updateTransform();
+      }
+    });
+  }
+
+  if (zoomResetBtn) {
+    zoomResetBtn.addEventListener('click', () => {
+      zoomLevel = 1;
+      panX = 0;
+      panY = 0;
+      updateTransform();
+    });
+  }
+
+  console.log('💡 Tips: Ctrl+Scroll = Zoom | Right-click+Drag = Pan | Double-click = Reset | Buttons also work');
 </script>
 {% endblock %}

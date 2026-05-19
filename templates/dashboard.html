@@ -16,12 +16,19 @@
     border-radius: var(--radius-sm);
     padding: 16px;
     text-align: center;
+    border: 1px solid var(--border);
+    transition: all 0.3s ease;
+  }
+  .sensor-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
   }
   .sensor-card .sensor-label {
     font-size: 0.7rem;
     color: var(--txt3);
     text-transform: uppercase;
     letter-spacing: 0.5px;
+    margin-bottom: 8px;
   }
   .sensor-card .sensor-value {
     font-size: 1.5rem;
@@ -35,19 +42,235 @@
   }
   .aqi-display {
     text-align: center;
-    padding: 16px;
+    padding: 20px;
     border-radius: var(--radius-sm);
     margin-top: 16px;
+    transition: all 0.3s ease;
   }
-  .aqi-1 { background: #10B98120; border: 1px solid #10B981; }
-  .aqi-2 { background: #84CC1620; border: 1px solid #84CC16; }
-  .aqi-3 { background: #F59E0B20; border: 1px solid #F59E0B; }
-  .aqi-4 { background: #F9731620; border: 1px solid #F97316; }
-  .aqi-5 { background: #EF444420; border: 1px solid #EF4444; }
+  .aqi-1 { background: #00E40020; border: 1px solid #00E400; }
+  .aqi-2 { background: #FFFF0020; border: 1px solid #EAB308; }
+  .aqi-3 { background: #FF7E0020; border: 1px solid #FF7E00; }
+  .aqi-4 { background: #FF000020; border: 1px solid #FF0000; }
+  .aqi-5 { background: #8F3F9720; border: 1px solid #8F3F97; }
+  .aqi-6 { background: #7E002320; border: 1px solid #7E0023; }
   .stat-value {
     font-family: 'Roboto Mono', monospace;
     font-size: 1.5rem;
     font-weight: 600;
+  }
+  
+  /* Charts Grid */
+  .charts-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 20px;
+    margin-top: 16px;
+    margin-bottom: 24px;
+  }
+  .chart-card {
+    background: var(--surface);
+    border-radius: var(--radius-sm);
+    padding: 16px;
+    border: 1px solid var(--border);
+    transition: all 0.3s ease;
+  }
+  .chart-card:hover {
+    box-shadow: var(--shadow-md);
+  }
+  .chart-card .chart-title {
+    font-size: 0.75rem;
+    color: var(--txt3);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 12px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .chart-card canvas {
+    max-height: 200px;
+    width: 100%;
+  }
+  
+  /* Flight Data Grid */
+  .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 20px;
+    margin-bottom: 24px;
+  }
+  .metric-card {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    padding: 20px 24px;
+  }
+  .metric-data {
+    flex: 1;
+  }
+  .card-label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--txt3);
+    margin-bottom: 8px;
+    display: block;
+  }
+  .card-value {
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: var(--txt);
+    font-family: 'Roboto Mono', monospace;
+    line-height: 1;
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+  }
+  .card-unit {
+    font-size: 0.9rem;
+    color: var(--txt2);
+    font-weight: 500;
+    font-family: 'Inter', sans-serif;
+  }
+  .progress-bar-wrap {
+    height: 4px;
+    background: var(--surface2);
+    border-radius: 2px;
+    margin-top: 8px;
+    overflow: hidden;
+  }
+  .progress-bar-fill {
+    height: 100%;
+    transition: width 0.3s ease;
+  }
+  
+  /* Section Label */
+  .section-label {
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--accent);
+    margin-bottom: 12px;
+    margin-top: 8px;
+  }
+  
+  /* Control Buttons */
+  .control-group {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .mode-indicator {
+    font-family: 'Roboto Mono', monospace;
+    font-size: 1.2rem;
+    font-weight: 600;
+    color: var(--accent);
+  }
+  .armed-indicator {
+    font-family: 'Roboto Mono', monospace;
+    font-size: 1.2rem;
+    font-weight: 600;
+  }
+  .armed-indicator.armed {
+    color: #EF4444;
+  }
+  .armed-indicator.disarmed {
+    color: #10B981;
+  }
+  
+  /* WP Data Panel */
+  .wp-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+  }
+  .wp-table th {
+    text-align: left;
+    padding: 8px 10px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--txt3);
+    border-bottom: 1px solid var(--border);
+  }
+  .wp-table td {
+    padding: 9px 10px;
+    border-bottom: 1px solid var(--border);
+    font-family: 'Roboto Mono', monospace;
+    vertical-align: middle;
+  }
+  .wp-table tr:last-child td { border-bottom: none; }
+  .wp-table tr:hover td { background: var(--surface2); }
+  .wp-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #fff;
+    font-size: 0.75rem;
+    font-weight: 700;
+    font-family: 'Inter', sans-serif;
+  }
+  .sample-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .sample-bar-track {
+    flex: 1;
+    height: 5px;
+    background: var(--surface2);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .sample-bar-fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 3px;
+    transition: width 0.3s;
+  }
+  .wp-empty {
+    text-align: center;
+    padding: 32px;
+    color: var(--txt3);
+    font-size: 0.85rem;
+  }
+  .live-collecting {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.75rem;
+    color: var(--warn);
+    font-family: 'Inter', sans-serif;
+    font-weight: 500;
+  }
+  .live-collecting .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--warn);
+    animation: pulse-dot 1s infinite;
+  }
+  @keyframes pulse-dot {
+    0%,100%{ opacity:1; } 50%{ opacity:0.3; }
+  }
+  @media (max-width: 768px) {
+    .charts-grid {
+      grid-template-columns: 1fr;
+    }
+    .stat-grid {
+      grid-template-columns: 1fr;
+    }
+    .sensors-grid {
+      grid-template-columns: 1fr;
+    }
   }
 </style>
 {% endblock %}
@@ -55,170 +278,278 @@
 {% block main_content %}
 <div class="telemetry-container">
   
-  <div class="section-label">Flight Data</div>
+  <!-- Flight Data Section -->
+  <div class="section-label">✈️ Flight Data</div>
   <div class="stat-grid">
     <div class="card metric-card">
       <div class="metric-data">
-        <span class="card-label">Độ cao (Alt)</span>
-        <div class="card-value"><span id="t-alt" class="stat-value">--</span><span class="card-unit">m</span></div>
-        <div class="alt-bar-wrap" style="height: 4px; background: var(--surface2); border-radius: 2px; margin-top: 8px; overflow: hidden;">
-          <div id="alt-fill" style="height: 100%; background: var(--accent); width: 0%; transition: 0.3s;"></div>
+        <span class="card-label">Độ cao (Altitude)</span>
+        <div class="card-value">
+          <span id="t-alt" class="stat-value" style="color: var(--warn);">N/A</span>
+          <span class="card-unit"></span>
         </div>
       </div>
     </div>
+    
+    <!-- Vận tốc -->
     <div class="card metric-card">
       <div class="metric-data">
-        <span class="card-label">Vận tốc (V)</span>
-        <div class="card-value"><span id="t-spd" class="stat-value">--</span><span class="card-unit">m/s</span></div>
+        <span class="card-label">Vận tốc (Speed)</span>
+        <div class="card-value">
+          <span id="t-spd" class="stat-value">--</span>
+          <span class="card-unit">m/s</span>
+        </div>
       </div>
     </div>
+    
+    <!-- Hướng -->
     <div class="card metric-card">
       <div class="metric-data">
         <span class="card-label">Hướng (Heading)</span>
-        <div class="card-value"><span id="t-hdg" class="stat-value">--</span><span class="card-unit">°</span></div>
-      </div>
-    </div>
-    <div class="card metric-card">
-      <div class="metric-data">
-        <span class="card-label">Pin (Battery)</span>
-        <div class="card-value"><span id="t-bat" class="stat-value">--</span><span class="card-unit">%</span></div>
-        <div style="height: 4px; background: var(--surface2); border-radius: 2px; margin-top: 8px; overflow: hidden;">
-          <div id="t-bat-bar" style="height: 100%; background: var(--ok); width: 0%; transition: 0.3s;"></div>
+        <div class="card-value">
+          <span id="t-hdg" class="stat-value">--</span>
+          <span class="card-unit">°</span>
         </div>
       </div>
     </div>
+
+    <div class="card metric-card">
+        <div class="metric-data">
+            <span class="card-label">Pin (Battery)</span>
+            <div class="card-value">
+                <span id="t-bat" class="stat-value" style="color: var(--warn);">--</span>
+                <span class="card-unit">V</span>
+            </div>
+        </div>
+    </div>
   </div>
 
-  <div class="section-label" style="margin-top: 24px;">🌍 Dữ liệu quan trắc không khí (Air Quality)</div>
-  
+  <!-- Air Quality Section -->
+  <div class="section-label">Dữ liệu quan trắc không khí (Air Quality)</div>
   <div class="sensors-grid">
+    <!-- PM2.5 -->
     <div class="sensor-card">
       <div class="sensor-label">Bụi mịn PM2.5</div>
-      <div class="sensor-value"><span id="s-pm25" class="stat-value">--</span></div>
-      <div class="sensor-unit">µg/m³</div>
-      <div style="height: 4px; background: var(--surface2); border-radius: 2px; margin-top: 8px; overflow: hidden;">
+      <div class="sensor-value">
+        <span id="s-pm25" class="stat-value">--</span>
+        <span class="sensor-unit">µg/m³</span>
+      </div>
+      <div class="progress-bar-wrap" style="margin-top: 8px;">
         <div id="bar-pm25" style="height:100%; background: #EF4444; width:0%;"></div>
       </div>
     </div>
     
-    <div class="sensor-card">
-      <div class="sensor-label">Bụi mịn PM10</div>
-      <div class="sensor-value"><span id="s-pm10" class="stat-value">--</span></div>
-      <div class="sensor-unit">µg/m³</div>
-      <div style="height: 4px; background: var(--surface2); border-radius: 2px; margin-top: 8px; overflow: hidden;">
-        <div id="bar-pm10" style="height:100%; background: #F97316; width:0%;"></div>
-      </div>
-    </div>
-    
+    <!-- eCO2 -->
     <div class="sensor-card">
       <div class="sensor-label">Carbon Dioxide (CO₂)</div>
-      <div class="sensor-value"><span id="s-eco2" class="stat-value">--</span></div>
-      <div class="sensor-unit">ppm</div>
-      <div style="height: 4px; background: var(--surface2); border-radius: 2px; margin-top: 8px; overflow: hidden;">
+      <div class="sensor-value">
+        <span id="s-eco2" class="stat-value">--</span>
+        <span class="sensor-unit">mg/m³</span>
+      </div>
+      <div class="progress-bar-wrap" style="margin-top: 8px;">
         <div id="bar-eco2" style="height:100%; background: #F59E0B; width:0%;"></div>
       </div>
     </div>
     
+    <!-- TVOC -->
     <div class="sensor-card">
       <div class="sensor-label">TVOC (Hợp chất hữu cơ)</div>
-      <div class="sensor-value"><span id="s-tvoc" class="stat-value">--</span></div>
-      <div class="sensor-unit">ppb</div>
-      <div style="height: 4px; background: var(--surface2); border-radius: 2px; margin-top: 8px; overflow: hidden;">
+      <div class="sensor-value">
+        <span id="s-tvoc" class="stat-value">--</span>
+        <span class="sensor-unit">µg/m³</span>
+      </div>
+      <div class="progress-bar-wrap" style="margin-top: 8px;">
         <div id="bar-tvoc" style="height:100%; background: #8B5CF6; width:0%;"></div>
       </div>
     </div>
     
+    <!-- Temperature & Humidity Combined -->
     <div class="sensor-card">
-      <div class="sensor-label">Nhiệt độ</div>
-      <div class="sensor-value"><span id="s-temp" class="stat-value">--</span></div>
-      <div class="sensor-unit">°C</div>
+      <div class="sensor-label">CO (Carbon Monoxide)</div>
+      <div class="sensor-value">
+        <span id="s-co" class="stat-value">--</span>
+        <span class="sensor-unit">mg/m³</span>
+      </div>
+      <div style="height:4px;background:var(--border);border-radius:2px;margin-top:8px;"><div id="bar-co" style="height:100%;background:#F97316;width:0%;border-radius:2px;transition:width 0.5s;"></div></div>
     </div>
-    
     <div class="sensor-card">
-      <div class="sensor-label">Độ ẩm</div>
-      <div class="sensor-value"><span id="s-hum" class="stat-value">--</span></div>
-      <div class="sensor-unit">%</div>
+      <div class="sensor-label">NO₂ (Nitrogen Dioxide)</div>
+      <div class="sensor-value">
+        <span id="s-no2" class="stat-value">--</span>
+        <span class="sensor-unit">µg/m³</span>
+      </div>
+      <div style="height:4px;background:var(--border);border-radius:2px;margin-top:8px;"><div id="bar-no2" style="height:100%;background:#A855F7;width:0%;border-radius:2px;transition:width 0.5s;"></div></div>
+    </div>
+    <div class="sensor-card">
+      <div class="sensor-label">Nhiệt độ & Độ ẩm</div>
+      <div class="sensor-value">
+        <span id="s-temp" class="stat-value">--</span>
+        <span class="sensor-unit">°C</span>
+        <span style="margin: 0 8px; color: var(--txt3);">|</span>
+        <span id="s-hum" class="stat-value">--</span>
+        <span class="sensor-unit">%</span>
+      </div>
     </div>
   </div>
   
   <div id="aqi-container" class="aqi-display aqi-1">
-    <div style="font-size: 0.8rem; color: var(--txt3);">Chỉ số chất lượng không khí (AQI)</div>
+    <div style="font-size: 0.8rem; color: var(--txt3); margin-bottom: 8px;">
+      Chỉ số chất lượng không khí (AQI)
+    </div>
     <div style="font-size: 2.5rem; font-weight: 700;" id="s-aqi">--</div>
-    <div id="s-aqi-label" style="font-size: 0.9rem; font-weight: 500;">--</div>
+    <div id="s-aqi-label" style="font-size: 0.9rem; font-weight: 500; margin-top: 4px;">--</div>
   </div>
 
-  <div class="section-label" style="margin-top: 24px;">Flight Mode & Controls</div>
-  <div class="card" style="margin-bottom:24px;">
-    <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
-      <div>
-        <div class="card-label">Mode</div>
-        <div style="font-family:'Roboto Mono',monospace;font-size:1.2rem;font-weight:600;color:var(--accent);" id="t-mode">--</div>
+  <!-- Charts Section -->
+  <div class="section-label">Biểu đồ dữ liệu theo thời gian</div>
+  <div class="charts-grid">
+    <!-- PM2.5 Chart -->
+    <div class="chart-card">
+      <div class="chart-title">
+        PM2.5 (ug/m³)
       </div>
-      <div style="width: 1px; height: 30px; background: var(--border);"></div>
-      <div>
-        <div class="card-label">Status</div>
-        <div style="font-family:'Roboto Mono',monospace;font-size:1.2rem;font-weight:600;" id="t-armed">--</div>
+      <canvas id="pm25Chart" height="150"></canvas>
+    </div>
+    
+    <!-- eCO2 Chart -->
+    <div class="chart-card">
+      <div class="chart-title">
+        CO₂ (mg/m³)
       </div>
-      <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap;">
-        <button class="btn btn-primary btn-sm" onclick="api('/arm','POST','ARM')">ARM</button>
-        <button class="btn btn-ghost btn-sm"   onclick="api('/disarm','POST','DISARM')">DISARM</button>
-        <button class="btn btn-warn btn-sm"    onclick="api('/rtl','POST','RTL')">RTL</button>
-        <button class="btn btn-ghost btn-sm"   onclick="setMode('LOITER')">LOITER</button>
-        <button class="btn btn-ghost btn-sm"   onclick="setMode('GUIDED')">GUIDED</button>
+      <canvas id="eco2Chart" height="150"></canvas>
+    </div>
+    
+    <!-- TVOC Chart -->
+    <div class="chart-card">
+      <div class="chart-title">
+        TVOC (ug/m³)
       </div>
+      <canvas id="tvocChart" height="150"></canvas>
+    </div>
+    
+    <!-- CO Chart -->
+    <div class="chart-card">
+      <div class="chart-title">
+        <span>CO (mg/m³)</span>
+      </div>
+      <canvas id="coChart" height="150"></canvas>
+    </div>
+    <!-- NO2 Chart -->
+    <div class="chart-card">
+      <div class="chart-title">
+        <span>NO₂ (ug/m³)</span>
+      </div>
+      <canvas id="no2Chart" height="150"></canvas>
+    </div>
+    <!-- Temperature & Humidity Chart (combined) -->
+    <div class="chart-card">
+      <div class="chart-title">
+        Nhiệt độ (°C) & 💧 Độ ẩm (%)
+      </div>
+      <canvas id="tempHumChart" height="150"></canvas>
     </div>
   </div>
 
-  <div class="section-label">Lịch sử dữ liệu (History)</div>
-  <div class="card chart-area" style="min-height: 300px;">
-    <canvas id="histChart" height="120"></canvas>
+  <!-- Flight Mode & Controls -->
+  <div class="section-label">Flight Mode & Controls</div>
+  <div class="card" style="margin-bottom:24px; padding: 20px;">
+    <div class="control-group">
+      <div>
+        <div class="card-label">Mode</div>
+        <div class="mode-indicator" id="t-mode">--</div>
+      </div>
+      <div style="width: 1px; height: 40px; background: var(--border);"></div>
+      <div>
+        <div class="card-label">Status</div>
+        <div class="armed-indicator disarmed" id="t-armed">--</div>
+      </div>
+      <div style="margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap;">
+        <button class="btn btn-danger btn-sm" onclick="apiCall('/arm', 'POST', 'ARM')">ARM</button>
+        <button class="btn btn-ghost btn-sm" onclick="apiCall('/disarm', 'POST', 'DISARM')">DISARM</button>
+        <button class="btn btn-warn btn-sm" onclick="apiCall('/rtl', 'POST', 'RTL')">RTL</button>
+        <button class="btn btn-ghost btn-sm" onclick="setFlightMode('LOITER')">LOITER</button>
+        <button class="btn btn-ghost btn-sm" onclick="setFlightMode('GUIDED')">GUIDED</button>
+        <button class="btn btn-ghost btn-sm" onclick="setFlightMode('AUTO')">AUTO</button>
+      </div>
+    </div>
   </div>
-</div>
-{% endblock %}
+  <!-- WP Data Collection Panel -->
+  <div class="section-label">📦 Dữ liệu thu thập tại Waypoints</div>
+  <div class="card" style="margin-bottom: 24px; padding: 0; overflow: hidden;">
+    <!-- Header bar -->
+    <div style="padding: 14px 16px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--border);">
+      <span id="wp-panel-status" style="font-size: 0.8rem; color: var(--txt2);">Chưa có dữ liệu nào.</span>
+      <div style="margin-left: auto; display: flex; gap: 8px;">
+        <span id="wp-live-indicator" style="display:none;">
+          <span class="live-collecting"><span class="dot"></span>Đang thu thập...</span>
+        </span>
+        <button class="btn btn-ghost btn-sm" id="btn-dl-all" onclick="downloadAllWP()" style="display:none;">
+          ⬇ Tải tất cả (.zip)
+        </button>
+        <button class="btn btn-ghost btn-sm" onclick="clearWPData()" style="color: #EF4444; border-color: #EF4444; display:none;" id="btn-clear-wp">
+          🗑 Xóa
+        </button>
+      </div>
+    </div>
+
+    <!-- Live progress (khi đang HOLD) -->
+    <div id="wp-live-progress" style="display:none; padding: 10px 16px; background: var(--surface2); border-bottom: 1px solid var(--border);">
+      <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+        <span style="font-size:0.78rem; color:var(--txt3);" id="wp-live-label">Thu thập WP ? — 0/30 mẫu</span>
+        <span style="font-size:0.78rem; color:var(--accent);" id="wp-live-pct">0%</span>
+      </div>
+      <div style="height:6px; background:var(--border); border-radius:4px; overflow:hidden;">
+        <div id="wp-live-bar" style="height:100%; width:0%; background:var(--accent); border-radius:4px; transition:width 0.4s;"></div>
+      </div>
+    </div>
+
+    <!-- Table -->
+    <div style="overflow-x: auto;">
+      <table class="wp-table">
+        <thead>
+          <tr>
+            <th>WP</th>
+            <th>Thời gian</th>
+            <th>Tọa độ</th>
+            <th>Alt</th>
+            <th>Mẫu</th>
+            <th>File</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="wp-table-body">
+          <tr><td colspan="7" class="wp-empty">Chưa có dữ liệu. Bắt đầu mission để thu thập.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>{% endblock %}
 
 {% block body_script %}
 <script>
+// ==================== CONSTANTS ====================
 const MAX_POINTS = 60;
-const chartData = {
-  labels: [], pm25: [], eco2: [], tvoc: [], temp: [], hum: []
+const SENSOR_THRESHOLDS = {
+  PM25_MAX: 500,      // µg/m³
+  ECO2_MAX: 5000,     // µg/m³
+  TVOC_MAX: 5000      // µg/m³
 };
 
-const ctx = document.getElementById('histChart').getContext('2d');
-const histChart = new Chart(ctx, {
-  type: 'line',
-  data: {
-    labels: chartData.labels,
-    datasets: [
-      { label: 'PM2.5 (µg/m³)', data: chartData.pm25, borderColor: '#EF4444', borderWidth: 2, pointRadius: 0, tension: 0.4, fill: false, yAxisID: 'y' },
-      { label: 'CO₂ (ppm/10)', data: chartData.eco2, borderColor: '#F59E0B', borderWidth: 2, pointRadius: 0, tension: 0.4, fill: false, yAxisID: 'y' },
-      { label: 'TVOC (ppb/10)', data: chartData.tvoc, borderColor: '#8B5CF6', borderWidth: 2, pointRadius: 0, tension: 0.4, fill: false, yAxisID: 'y' },
-      { label: 'Nhiệt độ (°C)', data: chartData.temp, borderColor: '#10B981', borderWidth: 2, pointRadius: 0, tension: 0.4, fill: false, yAxisID: 'y1' },
-    ]
-  },
-  options: {
-    responsive: true,
-    maintainAspectRatio: true,
-    animation: false,
-    plugins: { 
-      legend: { labels: { font: { family: 'Inter', size: 10 } } }
-    },
-    scales: {
-      x: { ticks: { font: { size: 10 }, maxRotation: 45, autoSkip: true } },
-      y: { 
-        title: { display: true, text: 'PM2.5 / CO₂ / TVOC', font: { size: 10 } },
-        ticks: { font: { size: 10 } }
-      },
-      y1: {
-        position: 'right',
-        title: { display: true, text: 'Nhiệt độ (°C)', font: { size: 10 } },
-        ticks: { font: { size: 10 } },
-        grid: { drawOnChartArea: false }
-      }
-    }
-  }
-});
+// ==================== DATA STORAGE ====================
+const chartData = {
+  labels: [],
+  pm25: [],
+  eco2: [],
+  tvoc: [],
+  temp: [],
+  hum: [],
+  co: [],
+  no2: []
+};
+const SENSOR_CO_MAX  = 50;   // µg/m³
+const SENSOR_NO2_MAX = 200;  // µg/m³
 
-// Hàm làm tròn số - đảm bảo hiển thị đúng 2 chữ số thập phân
 function formatNumber(value, decimals = 2) {
   if (value === undefined || value === null) return '--';
   const num = parseFloat(value);
@@ -226,110 +557,384 @@ function formatNumber(value, decimals = 2) {
   return num.toFixed(decimals);
 }
 
-function pushChartData(pm25, eco2, tvoc, temp, hum) {
-  const ts = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  chartData.labels.push(ts);
-  chartData.pm25.push(parseFloat(formatNumber(pm25, 1)));
-  chartData.eco2.push(parseFloat(formatNumber(eco2 / 10, 1)));
-  chartData.tvoc.push(parseFloat(formatNumber(tvoc / 10, 1)));
-  chartData.temp.push(parseFloat(formatNumber(temp, 1)));
-  chartData.hum.push(parseFloat(formatNumber(hum, 1)));
-  
-  if (chartData.labels.length > MAX_POINTS) {
-    chartData.labels.shift();
-    Object.values(chartData).forEach(arr => { if (arr.length > MAX_POINTS) arr.shift(); });
-  }
-  histChart.update('none');
-}
-
-async function api(url, method='GET', label='') {
+async function apiCall(url, method = 'GET', label = '') {
   try {
-    const r = await fetch(url, { method });
-    const d = await r.json();
-    console.log(`[${label}]`, d.message || (d.success ? 'OK' : 'Failed'));
-    if (label === 'RTL') alert('Đang quay về điểm xuất phát!');
-  } catch(e) { console.error(e); }
-}
-
-function setMode(m) {
-  fetch('/set-mode', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ mode: m }) });
-}
-
-async function pollTelemetry() {
-  try {
-    const [vi, tele] = await Promise.all([
-      fetch('/vehicle-info').then(r => r.json()),
-      fetch('/api/telemetry').then(r => r.json())
-    ]);
-
-    if (vi.success) {
-      // Làm tròn tất cả thông số bay về 2 chữ số thập phân
-      document.getElementById('t-alt').textContent = formatNumber(vi.alt, 1);
-      document.getElementById('t-spd').textContent = formatNumber(vi.speed, 2);
-      document.getElementById('t-bat').textContent = Math.round(vi.battery);
-      document.getElementById('t-hdg').textContent = formatNumber(vi.heading, 0);
-      document.getElementById('t-mode').textContent = vi.mode || '--';
-      document.getElementById('t-armed').textContent = vi.armed ? '● ARMED' : '○ DISARMED';
-      document.getElementById('t-armed').style.color = vi.armed ? '#EF4444' : '#10B981';
-
-      const altPct = Math.min(100, (vi.alt / 200) * 100);
-      document.getElementById('alt-fill').style.width = altPct + '%';
-
-      const batBar = document.getElementById('t-bat-bar');
-      const batPct = Math.round(vi.battery);
-      batBar.style.width = batPct + '%';
-      batBar.style.background = batPct > 50 ? '#10B981' : batPct > 20 ? '#F59E0B' : '#EF4444';
-    }
-
-    if (tele.success) {
-      const s = tele.telemetry;
-      
-      // Cập nhật tất cả thông số quan trắc không khí với làm tròn 2 chữ số
-      document.getElementById('s-pm25').textContent = formatNumber(s.pm25, 1);
-      document.getElementById('s-pm10').textContent = formatNumber(s.pm10 || s.pm25 * 1.5, 1);
-      document.getElementById('s-eco2').textContent = formatNumber(s.eco2 || s.co2, 0);
-      document.getElementById('s-tvoc').textContent = formatNumber(s.tvoc, 0);
-      document.getElementById('s-temp').textContent = formatNumber(s.temp, 1);
-      document.getElementById('s-hum').textContent = formatNumber(s.hum, 1);
-      
-      // Thanh tiến trình
-      const pm25 = parseFloat(s.pm25) || 0;
-      const pm10 = parseFloat(s.pm10) || pm25 * 1.5;
-      const eco2 = parseFloat(s.eco2) || 0;
-      const tvoc = parseFloat(s.tvoc) || 0;
-      
-      document.getElementById('bar-pm25').style.width = Math.min(100, (pm25 / 300) * 100) + '%';
-      document.getElementById('bar-pm10').style.width = Math.min(100, (pm10 / 400) * 100) + '%';
-      document.getElementById('bar-eco2').style.width = Math.min(100, (eco2 / 2000) * 100) + '%';
-      document.getElementById('bar-tvoc').style.width = Math.min(100, (tvoc / 1000) * 100) + '%';
-      
-      // AQI
-      const aqi = s.aqi || 1;
-      const aqiEl = document.getElementById('s-aqi');
-      const aqiContainer = document.getElementById('aqi-container');
-      aqiEl.textContent = aqi;
-      
-      let aqiText = '', aqiClass = '';
-      switch(aqi) {
-        case 1: aqiText = 'Tốt - Không ảnh hưởng đến sức khỏe'; aqiClass = 'aqi-1'; break;
-        case 2: aqiText = 'Trung bình - Nhóm nhạy cảm nên hạn chế ra ngoài'; aqiClass = 'aqi-2'; break;
-        case 3: aqiText = 'Kém - Ảnh hưởng đến sức khỏe nếu tiếp xúc lâu'; aqiClass = 'aqi-3'; break;
-        case 4: aqiText = 'Xấu - Mọi người nên hạn chế hoạt động ngoài trời'; aqiClass = 'aqi-4'; break;
-        case 5: aqiText = 'Nguy hại - Cảnh báo khẩn cấp về sức khỏe'; aqiClass = 'aqi-5'; break;
-        default: aqiText = '--'; aqiClass = 'aqi-1';
+    const response = await fetch(url, { method });
+    const data = await response.json();
+    
+    if (data.success) {
+      console.log(`[${label}] ✅ Success:`, data.message || 'OK');
+      if (label === 'RTL') {
+        showNotification('🏠 Đang quay về điểm xuất phát!', 'info');
       }
-      document.getElementById('s-aqi-label').textContent = aqiText;
-      aqiContainer.className = `aqi-display ${aqiClass}`;
-      
-      // Thêm vào biểu đồ
-      pushChartData(pm25, eco2, tvoc, s.temp || 0, s.hum || 0);
+    } else {
+      console.error(`[${label}] ❌ Failed:`, data.message);
+      showNotification(`Lỗi: ${data.message || 'Không thành công'}`, 'error');
     }
-  } catch(err) {
-    console.error('Poll telemetry error:', err);
+    return data;
+  } catch (error) {
+    console.error(`[${label}] ❌ Error:`, error);
+    showNotification(`Lỗi kết nối: ${error.message}`, 'error');
+    return { success: false, message: error.message };
   }
 }
 
-setInterval(pollTelemetry, 1500);
-pollTelemetry();
+function setFlightMode(mode) {
+  fetch('/set-mode', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mode: mode })
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.success) {
+      showNotification(`Chuyển sang chế độ ${mode}`, 'success');
+    }
+  })
+  .catch(err => console.error(err));
+}
+
+function showNotification(message, type = 'info') {
+  const notification = document.createElement('div');
+  notification.style.cssText = `
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background: ${type === 'error' ? '#EF4444' : (type === 'success' ? '#10B981' : '#3B82F6')};
+    color: white;
+    padding: 12px 20px;
+    border-radius: 8px;
+    animation: slideIn 0.3s ease;
+    z-index: 1000;
+    font-size: 0.85rem;
+    font-weight: 500;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  `;
+  notification.textContent = message;
+  document.body.appendChild(notification);
+  
+  setTimeout(() => {
+    notification.style.animation = 'slideOut 0.3s ease';
+    setTimeout(() => notification.remove(), 300);
+  }, 3000);
+}
+
+if (!document.querySelector('#notification-styles')) {
+  const style = document.createElement('style');
+  style.id = 'notification-styles';
+  style.textContent = `
+    @keyframes slideIn {
+      from { transform: translateX(100%); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+    @keyframes slideOut {
+      from { transform: translateX(0); opacity: 1; }
+      to { transform: translateX(100%); opacity: 0; }
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+const pm25Chart = new Chart(document.getElementById('pm25Chart'), {
+  type: 'line',
+  data: { labels: [], datasets: [{ label: 'PM2.5 (µg/m³)', data: [], borderColor: '#EF4444', backgroundColor: 'rgba(239, 68, 68, 0.1)', borderWidth: 2, pointRadius: 0, pointHoverRadius: 4, tension: 0.4, fill: true }] },
+  options: { responsive: true, maintainAspectRatio: true, interaction: { mode: 'index', intersect: false }, plugins: { legend: { position: 'top', labels: { font: { size: 10 } } }, tooltip: { mode: 'index', intersect: false } }, scales: { y: { beginAtZero: true, title: { display: true, text: 'µg/m³', font: { size: 10 } } }, x: { ticks: { font: { size: 9 }, maxRotation: 45, autoSkip: true }, title: { display: true, text: 'Thời gian', font: { size: 10 } } } } }
+});
+
+// eCO2 Chart
+const eco2Chart = new Chart(document.getElementById('eco2Chart'), {
+  type: 'line',
+  data: { labels: [], datasets: [{ label: 'CO₂ (mg/m³)', data: [], borderColor: '#F59E0B', backgroundColor: 'rgba(245, 158, 11, 0.1)', borderWidth: 2, pointRadius: 0, pointHoverRadius: 4, tension: 0.4, fill: true }] },
+  options: { responsive: true, maintainAspectRatio: true, interaction: { mode: 'index', intersect: false }, plugins: { legend: { position: 'top', labels: { font: { size: 10 } } }, tooltip: { mode: 'index', intersect: false } }, scales: { y: { beginAtZero: true, title: { display: true, text: 'mg/m³', font: { size: 10 } } }, x: { ticks: { font: { size: 9 }, maxRotation: 45, autoSkip: true }, title: { display: true, text: 'Thời gian', font: { size: 10 } } } } }
+});
+
+
+const tvocChart = new Chart(document.getElementById('tvocChart'), {
+  type: 'line',
+  data: { labels: [], datasets: [{ label: 'TVOC (µg/m³)', data: [], borderColor: '#8B5CF6', backgroundColor: 'rgba(139, 92, 246, 0.1)', borderWidth: 2, pointRadius: 0, pointHoverRadius: 4, tension: 0.4, fill: true }] },
+  options: { responsive: true, maintainAspectRatio: true, interaction: { mode: 'index', intersect: false }, plugins: { legend: { position: 'top', labels: { font: { size: 10 } } }, tooltip: { mode: 'index', intersect: false } }, scales: { y: { beginAtZero: true, title: { display: true, text: 'µg/m³', font: { size: 10 } } }, x: { ticks: { font: { size: 9 }, maxRotation: 45, autoSkip: true }, title: { display: true, text: 'Thời gian', font: { size: 10 } } } } }
+});
+
+
+const coChart = new Chart(document.getElementById('coChart'), {
+  type: 'line',
+  data: { labels: [], datasets: [{ label: 'CO (mg/m³)', data: [], borderColor: '#F97316', backgroundColor: 'rgba(249,115,22,0.1)', borderWidth: 2, pointRadius: 0, pointHoverRadius: 4, tension: 0.4, fill: true }] },
+  options: { responsive: true, maintainAspectRatio: true, interaction: { mode: 'index', intersect: false }, plugins: { legend: { position: 'top', labels: { font: { size: 10 } } } }, scales: { y: { beginAtZero: true, title: { display: true, text: 'mg/m³', font: { size: 10 } } }, x: { ticks: { font: { size: 9 }, maxRotation: 45, autoSkip: true }, title: { display: true, text: 'Thời gian', font: { size: 10 } } } } }
+});
+
+// NO2 Chart
+const no2Chart = new Chart(document.getElementById('no2Chart'), {
+  type: 'line',
+  data: { labels: [], datasets: [{ label: 'NO₂ (µg/m³)', data: [], borderColor: '#A855F7', backgroundColor: 'rgba(168,85,247,0.1)', borderWidth: 2, pointRadius: 0, pointHoverRadius: 4, tension: 0.4, fill: true }] },
+  options: { responsive: true, maintainAspectRatio: true, interaction: { mode: 'index', intersect: false }, plugins: { legend: { position: 'top', labels: { font: { size: 10 } } } }, scales: { y: { beginAtZero: true, title: { display: true, text: 'µg/m³', font: { size: 10 } } }, x: { ticks: { font: { size: 9 }, maxRotation: 45, autoSkip: true }, title: { display: true, text: 'Thời gian', font: { size: 10 } } } } }
+});
+
+
+const tempHumChart = new Chart(document.getElementById('tempHumChart'), {
+  type: 'line',
+  data: { labels: [], datasets: [{ label: 'Nhiệt độ (°C)', data: [], borderColor: '#10B981', backgroundColor: 'rgba(16, 185, 129, 0.1)', borderWidth: 2, pointRadius: 0, pointHoverRadius: 4, tension: 0.4, fill: true, yAxisID: 'y' }, { label: 'Độ ẩm (%)', data: [], borderColor: '#06B6D4', backgroundColor: 'rgba(6, 182, 212, 0.1)', borderWidth: 2, pointRadius: 0, pointHoverRadius: 4, tension: 0.4, fill: true, yAxisID: 'y1' }] },
+  options: { responsive: true, maintainAspectRatio: true, interaction: { mode: 'index', intersect: false }, plugins: { legend: { position: 'top', labels: { font: { size: 10 } } }, tooltip: { mode: 'index', intersect: false } }, scales: { y: { title: { display: true, text: 'Nhiệt độ (°C)', font: { size: 10 } }, beginAtZero: true }, y1: { position: 'right', title: { display: true, text: 'Độ ẩm (%)', font: { size: 10 } }, grid: { drawOnChartArea: false }, beginAtZero: true, max: 100 }, x: { ticks: { font: { size: 9 }, maxRotation: 45, autoSkip: true }, title: { display: true, text: 'Thời gian', font: { size: 10 } } } } }
+});
+
+// ==================== UPDATE CHARTS ====================
+function updateAllCharts(pm25, eco2, tvoc, temp, hum, co, no2) {
+  const timestamp = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  
+  chartData.labels.push(timestamp);
+  chartData.pm25.push(parseFloat(pm25) || 0);
+  chartData.eco2.push(parseFloat(eco2) || 0);
+  chartData.tvoc.push(parseFloat(tvoc) || 0);
+  chartData.temp.push(parseFloat(temp) || 0);
+  chartData.hum.push(parseFloat(hum) || 0);
+  chartData.co.push(co != null ? parseFloat(co) : null);
+  chartData.no2.push(no2 != null ? parseFloat(no2) : null);
+  
+  while (chartData.labels.length > MAX_POINTS) {
+    chartData.labels.shift();
+    chartData.pm25.shift();
+    chartData.eco2.shift();
+    chartData.tvoc.shift();
+    chartData.temp.shift();
+    chartData.hum.shift();
+    chartData.co.shift();
+    chartData.no2.shift();
+  }
+  
+  pm25Chart.data.labels = [...chartData.labels];
+  pm25Chart.data.datasets[0].data = [...chartData.pm25];
+  pm25Chart.update('none');
+  
+  eco2Chart.data.labels = [...chartData.labels];
+  eco2Chart.data.datasets[0].data = [...chartData.eco2];
+  eco2Chart.update('none');
+  
+  tvocChart.data.labels = [...chartData.labels];
+  tvocChart.data.datasets[0].data = [...chartData.tvoc];
+  tvocChart.update('none');
+  
+  coChart.data.labels = [...chartData.labels];
+  coChart.data.datasets[0].data = [...chartData.co];
+  coChart.update('none');
+  
+  no2Chart.data.labels = [...chartData.labels];
+  no2Chart.data.datasets[0].data = [...chartData.no2];
+  no2Chart.update('none');
+  
+  tempHumChart.data.labels = [...chartData.labels];
+  tempHumChart.data.datasets[0].data = [...chartData.temp];
+  tempHumChart.data.datasets[1].data = [...chartData.hum];
+  tempHumChart.update('none');
+}
+
+// ==================== AQI VIỆT NAM DISPLAY ====================
+function getAQILevel(aqiValue) {
+  const aqi = Number(aqiValue);
+  if (!Number.isFinite(aqi) || aqi <= 50) return 1;
+  if (aqi <= 100) return 2;
+  if (aqi <= 150) return 3;
+  if (aqi <= 200) return 4;
+  if (aqi <= 300) return 5;
+  return 6;
+}
+
+function getAQIDetailsFromAQI(aqiValue) {
+  const level = getAQILevel(aqiValue);
+  const aqiMap = {
+    1: { text: 'Tốt - Chất lượng không khí tốt', class: 'aqi-1', color: '#00E400' },
+    2: { text: 'Trung bình - Chấp nhận được', class: 'aqi-2', color: '#EAB308' },
+    3: { text: 'Kém - Nhóm nhạy cảm nên hạn chế hoạt động ngoài trời', class: 'aqi-3', color: '#FF7E00' },
+    4: { text: 'Xấu - Mọi người nên hạn chế hoạt động ngoài trời', class: 'aqi-4', color: '#FF0000' },
+    5: { text: 'Rất xấu - Cảnh báo ảnh hưởng sức khỏe nghiêm trọng', class: 'aqi-5', color: '#8F3F97' },
+    6: { text: 'Nguy hại - Cảnh báo khẩn cấp về sức khỏe', class: 'aqi-6', color: '#7E0023' }
+  };
+  return aqiMap[level];
+}
+
+function onUAVDataUpdate(event) {
+  const state = event.detail.state;
+  const gps = state.gps;
+  const sensors = state.sensors;
+  
+  document.getElementById('t-bat').textContent = formatNumber(state.battery, 1);
+  document.getElementById('t-spd').textContent = formatNumber(gps.speed, 2);
+  document.getElementById('t-hdg').textContent = formatNumber(gps.heading, 0);
+  document.getElementById('t-mode').textContent = state.mode || '--';
+  
+  const armedElement = document.getElementById('t-armed');
+  const isArmed = state.armed;
+  armedElement.textContent = isArmed ? '● ARMED' : '○ DISARMED';
+  armedElement.className = `armed-indicator ${isArmed ? 'armed' : 'disarmed'}`;
+
+  const pm25 = sensors.pm25 || 0;
+  const eco2 = sensors.eco2 || 0;
+  const tvoc = sensors.tvoc || 0;
+  const temp = sensors.temp || 0;
+  const hum = sensors.hum || 0;
+  const co  = (sensors.co  != null) ? sensors.co  : null;
+  const no2 = (sensors.no2 != null) ? sensors.no2 : null;
+  const aqiFromSensor = sensors.aqi ?? 0;
+  
+  // Update Air Quality Display
+  document.getElementById('s-pm25').textContent = formatNumber(pm25, 1);
+  document.getElementById('s-eco2').textContent = formatNumber(eco2, 0);
+  document.getElementById('s-tvoc').textContent = formatNumber(tvoc, 0);
+  document.getElementById('s-temp').textContent = formatNumber(temp, 1);
+  document.getElementById('s-hum').textContent = formatNumber(hum, 1);
+  document.getElementById('s-co').textContent  = co  != null ? formatNumber(co, 2)  : '--';
+  document.getElementById('s-no2').textContent = no2 != null ? formatNumber(no2, 1) : '--';
+  
+  // Update progress bars for sensors
+  document.getElementById('bar-pm25').style.width = Math.min(100, (pm25 / SENSOR_THRESHOLDS.PM25_MAX) * 100) + '%';
+  document.getElementById('bar-eco2').style.width = Math.min(100, (eco2 / SENSOR_THRESHOLDS.ECO2_MAX) * 100) + '%';
+  document.getElementById('bar-tvoc').style.width = Math.min(100, (tvoc / SENSOR_THRESHOLDS.TVOC_MAX) * 100) + '%';
+  document.getElementById('bar-co').style.width  = co  != null ? Math.min(100, (co  / SENSOR_CO_MAX)  * 100) + '%' : '0%';
+  document.getElementById('bar-no2').style.width = no2 != null ? Math.min(100, (no2 / SENSOR_NO2_MAX) * 100) + '%' : '0%';
+  
+  // AQI đã được backend tính theo thang Việt Nam 0–500 từ PM2.5/CO/NO2
+  const aqiDetails = getAQIDetailsFromAQI(aqiFromSensor);
+  
+  document.getElementById('s-aqi').textContent = Math.round(aqiFromSensor);
+  document.getElementById('s-aqi-label').textContent = aqiDetails.text;
+  document.getElementById('aqi-container').className = `aqi-display ${aqiDetails.class}`;
+  
+  updateAllCharts(pm25, eco2, tvoc, temp, hum, co, no2);
+
+  console.log('Dashboard updated:', { pm25, eco2, tvoc, temp, hum, aqiDetails });
+}
+
+window.addEventListener('uav-data-update', onUAVDataUpdate);
+
+// Initial load
+setTimeout(() => {
+  fetch('/api/uav-state')
+    .then(r => r.json())
+    .then(data => {
+      if (data.success) {
+        const event = new CustomEvent('uav-data-update', { detail: { state: data.state } });
+        window.dispatchEvent(event);
+      }
+    })
+    .catch(err => console.error('Initial load error:', err));
+}, 100);
+
+let _wpFiles = [];
+let _wpPollInterval = null;
+
+function renderWPTable(files) {
+  const tbody = document.getElementById('wp-table-body');
+  if (!files || files.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" class="wp-empty">Chưa có dữ liệu. Bắt đầu mission để thu thập.</td></tr>';
+    document.getElementById('wp-panel-status').textContent = 'Chưa có dữ liệu nào.';
+    document.getElementById('btn-dl-all').style.display = 'none';
+    document.getElementById('btn-clear-wp').style.display = 'none';
+    return;
+  }
+
+  document.getElementById('wp-panel-status').textContent = `${files.length} waypoint đã thu thập — ${files.reduce((a,f)=>a+f.samples,0)} mẫu tổng cộng`;
+  document.getElementById('btn-dl-all').style.display = '';
+  document.getElementById('btn-clear-wp').style.display = '';
+
+  tbody.innerHTML = files.map(f => `
+    <tr>
+      <td><span class="wp-badge">${f.wp}</span></td>
+      <td style="font-size:0.75rem;color:var(--txt3);font-family:'Inter',sans-serif;">${f.time}</td>
+      <td style="font-size:0.75rem;">${f.lat.toFixed(5)}, ${f.lon.toFixed(5)}</td>
+      <td>${f.alt}m</td>
+      <td>
+        <div class="sample-bar">
+          <div class="sample-bar-track">
+            <div class="sample-bar-fill" style="width:${Math.min(100,(f.samples/30)*100)}%"></div>
+          </div>
+          <span style="font-size:0.75rem;color:var(--txt2);min-width:40px;">${f.samples}/30</span>
+        </div>
+      </td>
+      <td style="font-size:0.72rem;color:var(--txt3);font-family:'Inter',sans-serif;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${f.filename}</td>
+      <td>
+        <button class="btn btn-ghost btn-sm" onclick="downloadWP('${f.filename}')" style="padding:4px 10px;font-size:0.75rem;">
+          ⬇ CSV
+        </button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+async function pollWPData() {
+  try {
+    const r = await fetch('/wp-data/list');
+    const d = await r.json();
+    if (!d.success) return;
+    if (JSON.stringify(d.files) !== JSON.stringify(_wpFiles)) {
+      _wpFiles = d.files;
+      renderWPTable(_wpFiles);
+    }
+  } catch(_) {}
+}
+
+async function downloadWP(filename) {
+  try {
+    const r = await fetch(`/wp-data/download/${filename}`);
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+    showNotification(`Đã tải: ${filename}`, 'success');
+  } catch(e) {
+    showNotification('Lỗi khi tải file', 'error');
+  }
+}
+
+async function downloadAllWP() {
+  try {
+    showNotification('Đang chuẩn bị file ZIP...', 'info');
+    const r = await fetch('/wp-data/download-all');
+    if (!r.ok) { showNotification('Chưa có dữ liệu để tải', 'error'); return; }
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const ts = new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
+    a.href = url; a.download = `mission_data_${ts}.zip`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+    showNotification('Đã tải tất cả dữ liệu mission!', 'success');
+  } catch(e) {
+    showNotification('Lỗi khi tải ZIP', 'error');
+  }
+}
+
+async function clearWPData() {
+  if (!confirm('Xóa toàn bộ dữ liệu waypoint đã thu thập?')) return;
+  await fetch('/wp-data/clear', { method: 'POST' });
+  _wpFiles = [];
+  renderWPTable([]);
+  showNotification('Đã xóa dữ liệu', 'info');
+}
+
+window.addEventListener('uav-data-update', function(e) {
+  const s = e.detail.state;
+  fetch('/api/telemetry').then(r=>r.json()).then(d => {
+    if (!d.success) return;
+    const t = d.telemetry;
+    const liveDiv = document.getElementById('wp-live-progress');
+    const liveInd = document.getElementById('wp-live-indicator');
+    if (t.is_holding) {
+      const pct = Math.round((t.hold_samples / t.hold_total) * 100);
+      liveDiv.style.display = '';
+      liveInd.style.display = '';
+      document.getElementById('wp-live-label').textContent = `Thu thập WP ${t.current_wp} — ${t.hold_samples}/${t.hold_total} mẫu`;
+      document.getElementById('wp-live-pct').textContent = pct + '%';
+      document.getElementById('wp-live-bar').style.width = pct + '%';
+    } else {
+      liveDiv.style.display = 'none';
+      liveInd.style.display = 'none';
+    }
+  }).catch(_=>{});
+});
+
+_wpPollInterval = setInterval(pollWPData, 3000);
+pollWPData();
+
+console.log('Dashboard loaded - Charts ready');
 </script>
 {% endblock %}

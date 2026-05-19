@@ -4,7 +4,7 @@ const wpMarkers = [];
 let pathLine = null;
 let vehicleTrail = null;
 let currentHeading = 0;
-let dataPointsMarkers = []; // Lưu các marker điểm dữ liệu
+let dataPointsMarkers = [];
 let pollingInterval = null;
 
 const mapLayers = {
@@ -81,12 +81,24 @@ function getWpIcon(num, isActive) {
   });
 }
 
+
+function getAQILevelVN(aqiValue) {
+  const aqi = Number(aqiValue);
+  if (!Number.isFinite(aqi) || aqi <= 50) return 1;
+  if (aqi <= 100) return 2;
+  if (aqi <= 150) return 3;
+  if (aqi <= 200) return 4;
+  if (aqi <= 300) return 5;
+  return 6;
+}
+
+function getAQIColorVN(aqiValue) {
+  const colors = {1:'#00E400', 2:'#EAB308', 3:'#FF7E00', 4:'#FF0000', 5:'#8F3F97', 6:'#7E0023'};
+  return colors[getAQILevelVN(aqiValue)] || '#94A3B8';
+}
+
 function getDataPointIcon(aqi) {
-  let color = '#10B981';
-  if (aqi === 2) color = '#84CC16';
-  else if (aqi === 3) color = '#F59E0B';
-  else if (aqi === 4) color = '#F97316';
-  else if (aqi === 5) color = '#EF4444';
+  let color = getAQIColorVN(aqi);
   
   return L.divIcon({
     className: 'data-point-marker',
@@ -95,8 +107,10 @@ function getDataPointIcon(aqi) {
   });
 }
 
+// 16.07570
+// 108.15338
 async function initMap() {
-  let center = [16.074353668716064, 108.15225143177362];
+  let center = [16.07570, 108.15338];
   try {
     const pos = await fetch('/vehicle-position').then(r => r.json());
     if (pos.success) center = [pos.lat, pos.lon];
@@ -105,15 +119,12 @@ async function initMap() {
   map = L.map('map', { zoomControl: false }).setView(center, 17);
   mapLayers.roadmap.addTo(map);
   L.control.zoom({ position: 'bottomright' }).addTo(map);
-  
-  // Tạo marker UAV với icon drone
   vehicleMarker = L.marker(center, { 
     icon: getDroneIcon(0), 
     zIndexOffset: 1000,
     title: 'UAV Position'
   }).addTo(map);
   
-  // Thêm popup cho UAV
   vehicleMarker.bindPopup('<b>🚁 UAV</b><br>Đang hoạt động', { offset: [0, -20] });
   
   vehicleTrail = L.polyline([], { 
@@ -134,6 +145,51 @@ async function initMap() {
   setInterval(updateVehicleInfo, 1500);
   setInterval(updateMissionProgress, 1700);
   setInterval(loadCollectedData, 5000);
+
+  var hoangSaIcon = L.divIcon({
+    className: 'hoangsa-marker',
+    html: `
+      <div style="display: flex; flex-direction: column; align-items: center; cursor: pointer;">
+        <img src="/static/assets/flag_vn.png" 
+             style="width: 48px; height: 32px; border: 2px solid #FFD700; box-shadow: 0 2px 6px rgba(0,0,0,0.3); background: white; padding: 2px; object-fit: cover;"
+             alt="Việt Nam">
+        <div style="background: #DC2626; color: #FFD700; padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: bold; margin-top: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.2); border: 1px solid #FFD700;">
+          🏝️ QUẦN ĐẢO HOÀNG SA
+        </div>
+      </div>
+    `,
+    iconSize: [140, 65],
+    popupAnchor: [0, -35]
+  });
+  
+  L.marker([16.82847, 112.35718], { icon: hoangSaIcon })
+    .addTo(map)
+    .bindPopup('<b>🏝️ Quần đảo Hoàng Sa</b><br>🇻🇳 Chủ quyền của Việt Nam');
+
+  var truongSaIcon = L.divIcon({
+    className: 'truongsa-marker',
+    html: `
+      <div style="display: flex; flex-direction: column; align-items: center; cursor: pointer;">
+        <img src="/static/assets/flag_vn.png" 
+             style="width: 48px; height: 32px; border: 2px solid #FFD700; box-shadow: 0 2px 6px rgba(0,0,0,0.3); background: white; padding: 2px; object-fit: cover;"
+             alt="Việt Nam">
+        <div style="background: linear-gradient(135deg, #059669 0%, #047857 100%); color: #FFD700; padding: 4px 12px; border-radius: 24px; font-size: 11px; font-weight: bold; white-space: nowrap; margin-top: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.2); border: 1px solid rgba(255,215,0,0.5);">
+          🏝️ QUẦN ĐẢO TRƯỜNG SA
+        </div>
+      </div>
+    `,
+    iconSize: [150, 65],
+    popupAnchor: [0, -35]
+  });
+  
+  L.marker([9.51058, 112.89551], { icon: truongSaIcon })
+    .addTo(map)
+    .bindPopup(`
+      <div style="text-align: center; min-width: 180px; padding: 5px;">
+        <strong style="color: #059669; font-size: 14px;">🏝️ Quần đảo Trường Sa</strong><br>
+        <span style="font-size: 11px; color: #166534;">🇻🇳 Chủ quyền của Việt Nam</span>
+      </div>
+    `);
 }
 
 function initDataLoggingToggle() {
@@ -222,7 +278,7 @@ function updateDataList(dataPoints) {
   container.innerHTML = dataPoints.slice().reverse().map(point => {
     const date = new Date(point.time);
     const timeStr = date.toLocaleTimeString('vi-VN');
-    const aqiClass = `aqi-${point.aqi || 3}`;
+    const aqiClass = `aqi-${getAQILevelVN(point.aqi)}`;
     
     return `
       <div class="data-item ${aqiClass}" onclick="flyToDataPoint(${point.lat}, ${point.lon})">
@@ -269,7 +325,7 @@ function updateDataMarkers(dataPoints) {
           <tr><td>🧪 TVOC:</td><td><b>${point.tvoc.toFixed(0)} ppb</b></td></tr>
           <tr><td>🌡️ Nhiệt độ:</td><td>${point.temp.toFixed(1)} °C</td></tr>
           <tr><td>💧 Độ ẩm:</td><td>${point.hum.toFixed(1)} %</td></tr>
-          <tr><td>📊 AQI:</td><td><b style="color: ${point.aqi <= 2 ? '#10B981' : (point.aqi <= 3 ? '#F59E0B' : '#EF4444')}">${point.aqi}</b></td></tr>
+          <tr><td>📊 AQI:</td><td><b style="color: ${getAQIColorVN(point.aqi)}">${point.aqi}</b></td></tr>
         </table>
         <hr style="margin: 8px 0;">
         <small>📊 ${point.sample_count || 0} lần đo</small>
@@ -313,15 +369,33 @@ function setMapType(type, btn) {
   btn.classList.add('active');
 }
 
+let gpsAngle = 0;
+let trueLat = 16.074353668716064;
+let trueLon = 108.15225143177362;
+
 async function updatePosition() {
   try {
     const d = await fetch('/vehicle-position').then(r => r.json());
     if (!d.success) return;
-    const latlng = [d.lat, d.lon];
-    vehicleMarker.setLatLng(latlng);
-    vehicleTrail.addLatLng(latlng);
+    
+    trueLat = d.lat;
+    trueLon = d.lon;
+    
+    gpsAngle += 0.1;
+    const radius = 0.0000045;
+    const noiseLat = Math.cos(gpsAngle) * radius;
+    const noiseLon = Math.sin(gpsAngle) * radius;
+    
+    const displayLat = trueLat + noiseLat;
+    const displayLon = trueLon + noiseLon;
+    
+    vehicleMarker.setLatLng([displayLat, displayLon]);
+    vehicleTrail.addLatLng([trueLat, trueLon]);
+    
     if (vehicleTrail.getLatLngs().length > 100) {
-      const arr = vehicleTrail.getLatLngs(); arr.shift(); vehicleTrail.setLatLngs(arr);
+      const arr = vehicleTrail.getLatLngs();
+      arr.shift();
+      vehicleTrail.setLatLngs(arr);
     }
   } catch (_) { }
 }
@@ -332,7 +406,8 @@ async function updateVehicleInfo() {
     if (!d.success) return;
     document.getElementById('spd-val').textContent = d.speed.toFixed(1) + ' m/s';
     document.getElementById('hdg-val').textContent = Math.round(d.heading) + '°';
-    document.getElementById('alt-val').textContent = d.alt.toFixed(1) + ' m';
+    // document.getElementById('alt-val').textContent = d.alt.toFixed(1) + ' m';
+    document.getElementById('alt-val').textContent = 'N/A';
     currentHeading = d.heading;
     // Cập nhật icon drone với hướng mới
     vehicleMarker.setIcon(getDroneIcon(currentHeading));
@@ -449,7 +524,7 @@ async function uploadMission() {
 }
 
 async function startMission() {
-  if (!current_waypoints.length) {
+  if (!waypoints.length) {
     log('❌ Chưa có waypoint nào được upload! Hãy upload waypoint trước.', 'err');
     return;
   }
