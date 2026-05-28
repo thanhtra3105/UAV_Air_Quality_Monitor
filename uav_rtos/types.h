@@ -25,9 +25,9 @@ struct FlightState {
 };
 
 struct PidGains {
-  float kp_r = 0.85f, ki_r = 0.0005f, kd_r = 0.002f;
+  float kp_r = 0.80f, ki_r = 0.0001f, kd_r = 0.002f;
   float kp_p = 0.80f, ki_p = 0.0001f, kd_p = 0.002f;
-  float kp_y = 0.80f, ki_y = 0.0005f, kd_y = 0.001f;
+  float kp_y = 0.80f, ki_y = 0.0001f, kd_y = 0.002f;
   float kp_angle = 6.5f, ki_angle = 0.0f, kd_angle = 0.0f;
   float kp_vel_z = 3.5f, ki_vel_z = 0.0015f, kd_vel_z = 0.01f;
   float danh_lai = 4.0f;

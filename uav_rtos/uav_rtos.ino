@@ -86,12 +86,15 @@ float declinationAngle = (-1.0f + (26.0f / 60.0f)) / (180.0f / PI);
 //   ax_offset = 0.12731;
 //   ay_offset = 0.00210;
 //   az_offset = 9.39676;
-const float GX_OFgFlightET = -0.08777f;
-const float GY_OFgFlightET = 0.01915f;
-const float GZ_OFgFlightET = 0.00697f;
-const float AX_OFgFlightET = 0.12731f;
-const float AY_OFgFlightET = 0.00210f;
-const float AZ_OFgFlightET = 9.39676f;  // bao gồm gravity khi nằm bằng
+
+// Calib az done with ax, ay, az offset: 0.09939,0.01881,9.38658
+// Calib gyro done with gx, gy, gz offset: -0.08982,0.01832,0.00797
+const float GX_OFgFlightET = -0.08982f;
+const float GY_OFgFlightET = 0.01832f;
+const float GZ_OFgFlightET = 0.00797f;
+const float AX_OFgFlightET = 0.09939f;
+const float AY_OFgFlightET = 0.01881f;
+const float AZ_OFgFlightET = 9.38658f;  // bao gồm gravity khi nằm bằng
 
 // ════════════════════════════════════════════════════════════
 //  REMOTE CONTROL PACKET
@@ -237,7 +240,7 @@ void setup() {
   }
   mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
   mpu.setGyroRange(MPU6050_RANGE_500_DEG);
-  mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
+  mpu.setFilterBandwidth(MPU6050_BAND_94_HZ);
   Serial.printf("[OK]  MPU6050 — ofgFlightets ax=%.3f ay=%.3f az=%.3f | gx=%.3f gy=%.3f gz=%.3f\n",
                 AX_OFgFlightET, AY_OFgFlightET, AZ_OFgFlightET, GX_OFgFlightET, GY_OFgFlightET, GZ_OFgFlightET);
 
@@ -339,12 +342,11 @@ void loop() {
 // ════════════════════════════════════════════════════════════
 void TaskRateControl(void *pvParameters) {
   TickType_t xLastWake = xTaskGetTickCount();
-  const TickType_t xPeriod = pdMS_TO_TICKS(2);  // 2ms = 500Hz
-
-  uint32_t last_us = micros();
-
+  const TickType_t xPeriod = pdMS_TO_TICKS(1);  // 1ms = 1KHz
+  static bool yaw_armed = false;
   // Local copy của PID gains để tránh lock dài
   PidGains g_local;
+  uint32_t last_us = micros();
 
   for (;;) {
     uint32_t now_us = micros();
@@ -448,21 +450,34 @@ void TaskRateControl(void *pvParameters) {
     //   Roll+  (right)    → M1,M4 giảm / M2,M3 tăng  (+pid_r đẩy trái xuống)
     //   Yaw+   (CW)       → M1,M3 tăng / M2,M4 giảm  (CW motors tăng)
     //
-    // int m1 = thr_local - (int)pid_p_out + (int)pid_r_out - (int)pid_yaw_out;
-    // int m2 = thr_local - (int)pid_p_out - (int)pid_r_out + (int)pid_yaw_out;
-    // int m3 = thr_local + (int)pid_p_out - (int)pid_r_out - (int)pid_yaw_out;
-    // int m4 = thr_local + (int)pid_p_out + (int)pid_r_out + (int)pid_yaw_out;
-    int m1 = thr_local - (int)pid_p_out;
-    int m2 = thr_local - (int)pid_p_out;
-    int m3 = thr_local + (int)pid_p_out;
-    int m4 = thr_local + (int)pid_p_out;
+    int m1 = thr_local - (int)pid_p_out + (int)pid_r_out - (int)pid_yaw_out;
+    int m2 = thr_local - (int)pid_p_out - (int)pid_r_out + (int)pid_yaw_out;
+    int m3 = thr_local + (int)pid_p_out - (int)pid_r_out - (int)pid_yaw_out;
+    int m4 = thr_local + (int)pid_p_out + (int)pid_r_out + (int)pid_yaw_out;
+    // int m1 = thr_local - (int)pid_p_out;
+    // int m2 = thr_local - (int)pid_p_out;
+    // int m3 = thr_local + (int)pid_p_out;
+    // int m4 = thr_local + (int)pid_p_out;
+
+    // int m1 = thr_local + (int)pid_r_out;
+    // int m2 = thr_local - (int)pid_r_out;
+    // int m3 = thr_local - (int)pid_r_out;
+    // int m4 = thr_local + (int)pid_r_out;
+
     if (thr_local > 1030) {
+      if (!yaw_armed) {
+        xSemaphoreTake(xFlightMutex, portMAX_DELAY);
+        gFlight.target_yaw = gFlight.yaw;   // lấy yaw từ QMC5883 đã tính trong TaskAngleControl
+        yaw_armed = true;
+        xSemaphoreGive(xFlightMutex);
+      }
       writeMotor(0, m1);
       writeMotor(1, m2);
       writeMotor(2, m3);
       writeMotor(3, m4);
     } else {
       motorsOff();
+      yaw_armed = false; 
       // Reset integrators khi throttle thấp (tránh integrator windup khi cầm tay)
       i_p = 0;
       i_r = 0;
@@ -471,7 +486,8 @@ void TaskRateControl(void *pvParameters) {
       last_err_r = 0;
       last_err_yaw = 0;
     }
-    debug();
+    // debug();
+    // Serial.print(pitch)
     // Serial.println(dt_rate, 5);
     vTaskDelayUntil(&xLastWake, xPeriod);
   }
@@ -487,7 +503,7 @@ void TaskRateControl(void *pvParameters) {
 // ════════════════════════════════════════════════════════════
 void TaskAngleControl(void *pvParameters) {
   TickType_t xLastWake = xTaskGetTickCount();
-  const TickType_t xPeriod = pdMS_TO_TICKS(10);  // 10ms = 100Hz
+  const TickType_t xPeriod = pdMS_TO_TICKS(5);  // 5ms = 200Hz
 
   uint32_t last_us = micros();
   PidGains g_local;
@@ -527,6 +543,10 @@ void TaskAngleControl(void *pvParameters) {
     unc_roll = gFlight.KalmanUncertaintyAngleRoll;
     xSemaphoreGive(xFlightMutex);
 
+    /* ------- COMPLEMENTARY ---------*/
+    // float new_pitch = 0.98 * (pitch_k + imu_local.gy * dt_angle) + 0.02 * pitch_acc;
+    // float new_roll = 0.98 * (roll_k + imu_local.gx * dt_angle) + 0.02 * roll_acc;
+
     kalman_1d(roll_k, unc_roll, imu_local.gx, roll_acc, dt_angle);
     float new_roll = Kalman1DOutput[0];
     float new_unc_r = Kalman1DOutput[1];
@@ -565,7 +585,7 @@ void TaskAngleControl(void *pvParameters) {
 
     vel_kalman = VelocityVerticalKalman;  // từ kalman_filter.h (atomic float read)
     alt_kalman = AltitudeKalman;
-
+    // Serial.pri
     // ── 6. GPS pos hold adjust ────────────────────────────
     float roll_adj = 0, pitch_adj = 0;
     if (pos_hold_local) {
@@ -592,7 +612,7 @@ void TaskAngleControl(void *pvParameters) {
     float rate_sp_roll = constrain(g_local.kp_angle * err_ar
                                      + g_local.ki_angle * i_angle_r,
                                    -200.0f, 200.0f);
-
+    
     // YAW (heading hold)
     float err_ay = tgt_yaw - new_yaw;
     if (err_ay > 180.0f) err_ay -= 360.0f;
@@ -684,7 +704,9 @@ void TaskCommunication(void *pvParameters) {
 
       float new_target_pitch = mapf(rx_buf.trucX, 0, 1023, dl, -dl);
       float new_target_roll = mapf(rx_buf.trucY, 0, 1023, -dl, dl);
-
+      // Serial.print(new_target_pitch);
+      // Serial.print(',');
+      // Serial.println(new_target_roll);
       xSemaphoreTake(xFlightMutex, portMAX_DELAY);
 
       gFlight.alt_hold = (bool)rx_buf.nut1;
@@ -701,11 +723,11 @@ void TaskCommunication(void *pvParameters) {
 
       // Throttle chỉ cho remote control nếu KHÔNG alt hold
       if (!gFlight.alt_hold) {
-        gFlight.throttle = (int)mapf(rx_buf.chinhtocdoquat, 0, 100, 1000, 1700);
+        gFlight.throttle = (int)mapf(rx_buf.chinhtocdoquat, 0, 100, 1000, 1800);
       }
 
-      // gFlight.target_pitch = new_target_pitch;
-      // gFlight.target_roll = new_target_roll;
+      gFlight.target_pitch = new_target_pitch;
+      gFlight.target_roll = new_target_roll;
 
       // Cập nhật flight mode
       if (rx_buf.nut2 && !nut2_previous) {
@@ -746,11 +768,11 @@ void TaskCommunication(void *pvParameters) {
 // ════════════════════════════════════════════════════════════
 void TaskTelemetry(void *pvParameters) {
   for (;;) {
-    // ── BMP280 ─────────────────────────────────────────
-    // if (xSemaphoreTake(xI2CMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-    //   current_altitude = (bmp.readAltitude() - alt_ofgFlightet) * 100.0f;  // cm
-    //   xSemaphoreGive(xI2CMutex);
-    // }
+    /*──------------------ BMP280 ─────────────────────────────────────────*/
+    if (xSemaphoreTake(xI2CMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+      current_altitude = (bmp.readAltitude() - alt_ofgFlightet) * 100.0f;  // cm
+      xSemaphoreGive(xI2CMutex);
+    }
 
     // // ── INA219 battery ─────────────────────────────────
     // // INA219 cũng dùng I2C
@@ -759,8 +781,8 @@ void TaskTelemetry(void *pvParameters) {
     //   xSemaphoreGive(xI2CMutex);
     // }
 
-    // // ── GPS ────────────────────────────────────────────
-    // // Sync bridge variables từ gFlight trước khi dùng
+    // ── GPS ────────────────────────────────────────────
+    // Sync bridge variables từ gFlight trước khi dùng
     // if (xSemaphoreTake(xFlightMutex, pdMS_TO_TICKS(5)) == pdTRUE) {
     //   acc_z_inertial = gFlight.acc_z_inertial;
     //   pid_vel = gFlight.pid_vel;
@@ -793,7 +815,7 @@ void TaskWebServer(void *pvParameters) {
   Serial.println(WiFi.softAPIP());
 
   for (;;) {
-    server.handleClient();
+    // server.handleClient();
     vTaskDelay(pdMS_TO_TICKS(10));
   }
 }
@@ -832,6 +854,14 @@ float mapf(float x, float in_min, float in_max, float out_min, float out_max) {
 
 void debug()
 {
+  float dbg_pitch, dbg_roll;
+  xSemaphoreTake(xFlightMutex, portMAX_DELAY);
+  dbg_pitch = gFlight.pitch;
+  dbg_roll  = gFlight.roll;
+  xSemaphoreGive(xFlightMutex);
+
+  Serial.printf("pitch=%.2f roll=%.2f vel=%.2f\n",
+                dbg_pitch, dbg_roll, VelocityVerticalKalman);
   // Serial.print("Pitch:");  // nghieng phai la duong
   // Serial.print(gFlight.pitch);
   // Serial.print(" target_pitch:");
@@ -841,10 +871,10 @@ void debug()
   // Serial.print(" PID_P");
   // Serial.println(gFlight.pid_p);
   // Format: Pitch, TargetPitch, TargetRate, PID_P
-  Serial.print(gFlight.pitch); Serial.print(",");
-  Serial.print(gFlight.target_pitch); Serial.print(",");
-  Serial.print(gFlight.target_rate_pitch); Serial.print(",");
-  Serial.println(gFlight.pid_p);
+  // Serial.print(gFlight.pitch); Serial.print(",");
+  // Serial.print(gFlight.target_pitch); Serial.print(",");
+  // Serial.print(gFlight.target_rate_pitch); Serial.print(",");
+  // Serial.println(gFlight.pid_p);
   // Serial.print("roll:");  // nghieng phai la duong
   // Serial.print(gFlight.roll);
   // Serial.print(" target_roll:");
@@ -852,5 +882,9 @@ void debug()
   // Serial.print("  TargetRate:");
   // Serial.print(gFlight.target_rate_roll);
   // Serial.print(" PID_R");
+  // Serial.println(gFlight.pid_r);
+  // Serial.print(gFlight.roll); Serial.print(",");
+  // Serial.print(gFlight.target_roll); Serial.print(",");
+  // Serial.print(gFlight.target_rate_roll); Serial.print(",");
   // Serial.println(gFlight.pid_r);
 }
