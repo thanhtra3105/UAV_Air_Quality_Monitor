@@ -1,8 +1,9 @@
+/* GY-TOF10 with I2C*/
 #pragma once
 #include <Wire.h>
 
 #define TOF_ADDR 0xA4 >> 1
-uint16_t readTOF() {
+int readTOF() {
   Wire.beginTransmission(TOF_ADDR);
   Wire.write(0x08);  // distance high reg
   if (Wire.endTransmission(false) != 0)

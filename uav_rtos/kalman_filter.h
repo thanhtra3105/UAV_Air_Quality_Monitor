@@ -31,17 +31,33 @@ void kalman_setup() {
 
 // Kalman 2D: altitude + vertical velocity
 // Gọi từ TaskAngleControl (100Hz) — không gọi đồng thời ở nơi khác
-void kalman_2d(float acc_z_inertial, float current_alt_cm) {
-  Acc_k = { acc_z_inertial };
+void kalman_2d(float acc_z_inertial_m_s2, float current_alt_cm, float dt, float measurement_noise_cm2) {
+  // State dùng đơn vị cm và cm/s, nên gia tốc phải đổi từ m/s^2 sang cm/s^2
+  float acc_z_cm_s2 = acc_z_inertial_m_s2 * 100.0f;
+
+  F_k = { 1, dt,
+          0, 1  };
+  G_k = { 0.5f * dt * dt,
+          dt };
+
+  // Q càng lớn thì filter càng tin IMU/gia tốc thay đổi nhanh. Tune sau khi bay thử.
+  Q_k = G_k * ~G_k * 2500.0f;
+  R_k = { measurement_noise_cm2 };
+
+  Acc_k = { acc_z_cm_s2 };
   S_k   = F_k * S_k + G_k * Acc_k;
   P_k   = F_k * P_k * ~F_k + Q_k;
+
   L_k   = H_k * P_k * ~H_k + R_k;
   K_k   = P_k * ~H_k * Inverse(L_k);
+
   M_k   = { current_alt_cm };
   S_k   = S_k + K_k * (M_k - H_k * S_k);
-  AltitudeKalman       = S_k(0, 0);
+
+  AltitudeKalman = S_k(0, 0);
   VelocityVerticalKalman = S_k(1, 0);
-  P_k   = (I_k - K_k * H_k) * P_k;
+
+  P_k = (I_k - K_k * H_k) * P_k;
 }
 
 // Kalman 1D: lọc góc pitch/roll

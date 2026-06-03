@@ -11,14 +11,16 @@
   ║        /                  \                             ║
   ║    M3 (CW)             M2 (CCW)                         ║
   ╠══════════════════════════════════════════════════════════╣
-  ║  Task structure:                                        ║
-  ║   Core 1 | TaskRateControl   500Hz  Priority 5          ║
-  ║   Core 1 | TaskAngleControl  100Hz  Priority 4          ║
-  ║   Core 1 | TaskCommunication  20Hz  Priority 3          ║
-  ║   Core 0 | TaskTelemetry      10Hz  Priority 2          ║
-  ║   Core 0 | TaskWebServer       -    Priority 1          ║
+  ║  Task structure:                                         ║
+  ║   Core 1 | TaskRateControl    500Hz  Priority 6          ║
+  ║   Core 1 | TaskAngleControl   100Hz  Priority 5          ║
+  ║   Core 0 | TaskAltitudeSensor 50Hz   Priority 4          ║
+  ║   Core 1 | TaskCommunication  20Hz   Priority 3          ║
+  ║   Core 0 | TaskTelemetry      10Hz   Priority 2          ║
+  ║   Core 0 | TaskWebServer        -    Priority 1          ║
   ╚══════════════════════════════════════════════════════════╝
 */
+
 
 #include <SPI.h>
 #include <RF24.h>
@@ -33,6 +35,7 @@
 #include "poshold.h"
 #include "log.h"
 #include "ina219.h"
+#include "gy_tof.h"
 
 // ════════════════════════════════════════════════════════════
 //  PIN DEFINITIONS
@@ -86,15 +89,16 @@ float declinationAngle = (-1.0f + (26.0f / 60.0f)) / (180.0f / PI);
 //   ax_offset = 0.12731;
 //   ay_offset = 0.00210;
 //   az_offset = 9.39676;
-
-// Calib az done with ax, ay, az offset: 0.09939,0.01881,9.38658
-// Calib gyro done with gx, gy, gz offset: -0.08982,0.01832,0.00797
-const float GX_OFgFlightET = -0.08982f;
-const float GY_OFgFlightET = 0.01832f;
-const float GZ_OFgFlightET = 0.00797f;
-const float AX_OFgFlightET = 0.09939f;
-const float AY_OFgFlightET = 0.01881f;
-const float AZ_OFgFlightET = 9.38658f;  // bao gồm gravity khi nằm bằng
+/*
+Calib az done with ax, ay, az offset: 0.05692,0.02593,9.35071
+Calib gyro done with gx, gy, gz offset: -0.08704,0.02099,0.00579
+*/
+const float GX_OFgFlightET = -0.08704f;
+const float GY_OFgFlightET = 0.02099f;
+const float GZ_OFgFlightET = 0.00579f;
+const float AX_OFgFlightET = 0.05692f;
+const float AY_OFgFlightET = 0.02593f;
+const float AZ_OFgFlightET = 9.35071f;  // bao gồm gravity khi nằm bằng
 
 // ════════════════════════════════════════════════════════════
 //  REMOTE CONTROL PACKET
@@ -131,10 +135,29 @@ static ImuData imu_data;
 FlightState gFlight;
 
 PidGains gains;
-
-// BMP280 altitude
+// Altitude measurement/fusion
 float alt_ofgFlightet = 0.0f;
-float current_altitude = 0.0f;  // cm, từ BMP280
+// Altitude measurement/fusion
+const float R_TOF_GOOD = 25.0f;     // std ≈ 5cm
+const float R_TOF_BAD  = 900.0f;    // std ≈ 30cm
+const float R_BMP      = 2500.0f;   // std ≈ 50cm
+
+volatile float current_altitude = 0.0f;       // cm
+volatile float altitude_meas_R_cm2 = R_BMP;   // cm^2
+volatile bool altitude_meas_new = false;
+
+float bmp_altitude_cm = 0.0f;
+float tof_altitude_cm = 0.0f;
+volatile bool tof_valid = false;
+
+// Vòng ngoài altitude: sai số độ cao cm -> target velocity cm/s
+const float ALT_POS_KP = 0.08f;
+const float ALT_TARGET_VEL_LIMIT = 100.0f;  // cm/s
+static float last_vz_for_d = 0.0f;
+
+// TOF filtering state
+static float last_tof_cm = 0.0f;
+static bool last_tof_ok = false;
 
 // Battery
 float bat_voltage = 12.0f;
@@ -182,6 +205,7 @@ SemaphoreHandle_t xImuMutex;     // bảo vệ imu_data
 SemaphoreHandle_t xFlightMutex;  // bảo vệ gFlight (FlightState)
 SemaphoreHandle_t xGainsMutex;   // bảo vệ gains (PidGains) — WebServer ghi
 SemaphoreHandle_t xI2CMutex;     // bảo vệ I2C bus
+SemaphoreHandle_t xAltMutex;
 
 QueueHandle_t xControlQueue;  // Comm → flight tasks (ControlData)
 
@@ -193,6 +217,7 @@ TaskHandle_t TaskAngleHandle;
 // ════════════════════════════════════════════════════════════
 void TaskRateControl(void *pvParameters);
 void TaskAngleControl(void *pvParameters);
+void TaskAltitudeSensor(void *pvParameters);
 void TaskCommunication(void *pvParameters);
 void TaskTelemetry(void *pvParameters);
 void TaskWebServer(void *pvParameters);
@@ -200,7 +225,14 @@ void TaskWebServer(void *pvParameters);
 void bmp280_setup();
 void readAlt();
 void readYaw_safe();
-
+float processAltitudeMeasurement(int tof_mm,
+                                 float roll_deg,
+                                 float pitch_deg,
+                                 float bmp_cm,
+                                 float vz_cm_s,
+                                 float dt,
+                                 bool &tof_ok_out,
+                                 float &R_out_cm2);
 // ════════════════════════════════════════════════════════════
 //  PWM HELPERS
 // ════════════════════════════════════════════════════════════
@@ -307,23 +339,26 @@ void setup() {
   xFlightMutex = xSemaphoreCreateMutex();
   xGainsMutex = xSemaphoreCreateMutex();
   xI2CMutex = xSemaphoreCreateMutex();
+  xAltMutex = xSemaphoreCreateMutex();
   xControlQueue = xQueueCreate(2, sizeof(ControlData));
 
   configASSERT(xImuMutex);
   configASSERT(xFlightMutex);
   configASSERT(xGainsMutex);
   configASSERT(xI2CMutex);
+  configASSERT(xAltMutex);
   configASSERT(xControlQueue);
 
   // ════════════════════════════════════════════════════════
   //  Tạo task
   // ════════════════════════════════════════════════════════
   //                              name          stack   param pri   handle    core
-  xTaskCreatePinnedToCore(TaskRateControl, "Rate", 8192, NULL, 5, &TaskRateHandle, 1);
-  xTaskCreatePinnedToCore(TaskAngleControl, "Angle", 8192, NULL, 4, &TaskAngleHandle, 1);
-  xTaskCreatePinnedToCore(TaskCommunication, "Comm", 4096, NULL, 3, NULL, 1);
-  xTaskCreatePinnedToCore(TaskTelemetry, "Tele", 8192, NULL, 2, NULL, 0);
-  xTaskCreatePinnedToCore(TaskWebServer, "Web", 8192, NULL, 1, NULL, 0);
+  xTaskCreate(TaskRateControl,     "Rate",  8192, NULL, 6, &TaskRateHandle);
+  xTaskCreate(TaskAngleControl,    "Angle", 8192, NULL, 5, &TaskAngleHandle);
+  xTaskCreate(TaskAltitudeSensor,  "Alt",   8192, NULL, 4, NULL);
+  xTaskCreate(TaskCommunication,   "Comm",  4096, NULL, 3, NULL);
+  xTaskCreate(TaskTelemetry,       "Tele",  8192, NULL, 2, NULL);
+  xTaskCreate(TaskWebServer,       "Web",   8192, NULL, 1, NULL);
 
   Serial.println("[OK]  All tasks created — FLIGHT READY");
 }
@@ -342,7 +377,7 @@ void loop() {
 // ════════════════════════════════════════════════════════════
 void TaskRateControl(void *pvParameters) {
   TickType_t xLastWake = xTaskGetTickCount();
-  const TickType_t xPeriod = pdMS_TO_TICKS(1);  // 1ms = 1KHz
+  const TickType_t xPeriod = pdMS_TO_TICKS(2);  // 1ms = 1KHz
   static bool yaw_armed = false;
   // Local copy của PID gains để tránh lock dài
   PidGains g_local;
@@ -353,6 +388,7 @@ void TaskRateControl(void *pvParameters) {
     float dt_rate = (now_us - last_us) * 1e-6f;
     // Clamp dt phòng trường hợp bị delay bất thường
     dt_rate = constrain(dt_rate, 0.0005f, 0.01f);
+    // Serial.println(dt_rate, 5);
     last_us = now_us;
 
     // ── 1. Đọc IMU qua I2C ───────────────────────────────
@@ -372,6 +408,7 @@ void TaskRateControl(void *pvParameters) {
     } else {
       // Không lấy được I2C — bỏ qua vòng này
       vTaskDelayUntil(&xLastWake, xPeriod);
+      Serial.println("huhu");
       continue;
     }
 
@@ -395,7 +432,7 @@ void TaskRateControl(void *pvParameters) {
       alt_hold_local = gFlight.alt_hold;
       xSemaphoreGive(xFlightMutex);
     }
-
+    // Serial.println(thr_local);
     // ── 4. Lấy PID gains ─────────────────────────────────
     if (xSemaphoreTake(xGainsMutex, 0) == pdTRUE) {
       g_local = gains;
@@ -450,14 +487,14 @@ void TaskRateControl(void *pvParameters) {
     //   Roll+  (right)    → M1,M4 giảm / M2,M3 tăng  (+pid_r đẩy trái xuống)
     //   Yaw+   (CW)       → M1,M3 tăng / M2,M4 giảm  (CW motors tăng)
     //
-    int m1 = thr_local - (int)pid_p_out + (int)pid_r_out - (int)pid_yaw_out;
-    int m2 = thr_local - (int)pid_p_out - (int)pid_r_out + (int)pid_yaw_out;
-    int m3 = thr_local + (int)pid_p_out - (int)pid_r_out - (int)pid_yaw_out;
-    int m4 = thr_local + (int)pid_p_out + (int)pid_r_out + (int)pid_yaw_out;
-    // int m1 = thr_local - (int)pid_p_out;
-    // int m2 = thr_local - (int)pid_p_out;
-    // int m3 = thr_local + (int)pid_p_out;
-    // int m4 = thr_local + (int)pid_p_out;
+    // int m1 = thr_local - (int)pid_p_out + (int)pid_r_out - (int)pid_yaw_out;
+    // int m2 = thr_local - (int)pid_p_out - (int)pid_r_out + (int)pid_yaw_out;
+    // int m3 = thr_local + (int)pid_p_out - (int)pid_r_out - (int)pid_yaw_out;
+    // int m4 = thr_local + (int)pid_p_out + (int)pid_r_out + (int)pid_yaw_out;
+    int m1 = thr_local - (int)pid_p_out;
+    int m2 = thr_local - (int)pid_p_out;
+    int m3 = thr_local + (int)pid_p_out;
+    int m4 = thr_local + (int)pid_p_out;
 
     // int m1 = thr_local + (int)pid_r_out;
     // int m2 = thr_local - (int)pid_r_out;
@@ -512,8 +549,9 @@ void TaskAngleControl(void *pvParameters) {
     uint32_t now_us = micros();
     float dt_angle = (now_us - last_us) * 1e-6f;
     dt_angle = constrain(dt_angle, 0.005f, 0.05f);
+    // Serial.println(dt_angle, 5);
     last_us = now_us;
-
+  
     // ── 1. Lấy bản sao IMU data ──────────────────────────
     ImuData imu_local;
     xSemaphoreTake(xImuMutex, portMAX_DELAY);
@@ -557,22 +595,23 @@ void TaskAngleControl(void *pvParameters) {
 
     // ── 4. Đọc Yaw từ compass (I2C) ──────────────────────
     float new_yaw = 0;
-    if (xSemaphoreTake(xI2CMutex, pdMS_TO_TICKS(3)) == pdTRUE) {
-      sVector_t mag = compass.readRaw();
-      compass.getHeadingDegrees();
-      new_yaw = mag.HeadingDegress;
-      xSemaphoreGive(xI2CMutex);
-    } else {
-      // Giữ yaw cũ nếu không lấy được I2C
-      xSemaphoreTake(xFlightMutex, portMAX_DELAY);
-      new_yaw = gFlight.yaw;
-      xSemaphoreGive(xFlightMutex);
+    static uint8_t yaw_div = 0;
+    static float yaw_hold = 0.0f;
+    yaw_div++;
+    if (yaw_div >= 4) {  // Angle 200Hz / 4 = 50Hz
+      yaw_div = 0;
+      if (xSemaphoreTake(xI2CMutex, pdMS_TO_TICKS(2)) == pdTRUE) {
+        sVector_t mag = compass.readRaw();
+        compass.getHeadingDegrees();
+        yaw_hold = mag.HeadingDegress;
+        xSemaphoreGive(xI2CMutex);
+      }
     }
+    new_yaw = yaw_hold;
 
     // ── 5. Lấy targets từ FlightState ────────────────────
     float tgt_pitch, tgt_roll, tgt_yaw, tgt_alt;
     bool alt_hold_local, pos_hold_local;
-    float vel_kalman, alt_kalman;
 
     xSemaphoreTake(xFlightMutex, portMAX_DELAY);
     tgt_pitch = gFlight.target_pitch;
@@ -583,8 +622,6 @@ void TaskAngleControl(void *pvParameters) {
     pos_hold_local = gFlight.pos_hold;
     xSemaphoreGive(xFlightMutex);
 
-    vel_kalman = VelocityVerticalKalman;  // từ kalman_filter.h (atomic float read)
-    alt_kalman = AltitudeKalman;
     // Serial.pri
     // ── 6. GPS pos hold adjust ────────────────────────────
     float roll_adj = 0, pitch_adj = 0;
@@ -619,31 +656,62 @@ void TaskAngleControl(void *pvParameters) {
     if (err_ay < -180.0f) err_ay += 360.0f;
     float rate_sp_yaw = constrain(g_local.kp_angle * err_ay, -200.0f, 200.0f);
 
-    // ── 8. Altitude hold PID ──────────────────────────────
+    // ── 8. Altitude estimator + cascaded altitude PID ───────
     int thr_out = 0;  // delta throttle từ alt hold
+
+    // Acc body -> Earth Z, đơn vị m/s^2.
+    // Công thức này đúng hơn so với chỉ dùng az - cos(roll)*cos(pitch)*g.
+    float roll_rad  = new_roll * DEG_TO_RAD;
+    float pitch_rad = new_pitch * DEG_TO_RAD;
+    float az_inertial = imu_local.ax * sinf(pitch_rad)
+                      - imu_local.ay * sinf(roll_rad) * cosf(pitch_rad)
+                      + imu_local.az * cosf(roll_rad) * cosf(pitch_rad)
+                      - GRAVITY;
+
+    // Kalman nên chạy liên tục, không chỉ khi bật alt_hold, để AltitudeKalman sẵn sàng khi chốt target.
+    float cur_alt_cm = 0.0f;
+    float R_meas = R_BMP;
+
+    if (xSemaphoreTake(xAltMutex, 0) == pdTRUE) {
+      cur_alt_cm = current_altitude;
+      R_meas = altitude_meas_R_cm2;
+      altitude_meas_new = false;
+      xSemaphoreGive(xAltMutex);
+    }
+
+    kalman_2d(az_inertial, cur_alt_cm, dt_angle, R_meas);
+    // Serial.println(cur_alt_cm);
+    // Serial.println(AltitudeKalman);
     if (alt_hold_local) {
-      // Cập nhật Kalman altitude (dùng BMP280 + gia tốc kế trục Z)
-      float az_inertial = imu_local.az
-                          - cosf(new_roll * DEG_TO_RAD)
-                              * cosf(new_pitch * DEG_TO_RAD) * GRAVITY;
+      // Vòng ngoài: độ cao -> target vertical velocity
+      float alt_err = tgt_alt - AltitudeKalman;
+      // Serial.println(alt_err);
+      float target_vz = ALT_POS_KP * alt_err;
+      target_vz = constrain(target_vz, -ALT_TARGET_VEL_LIMIT, ALT_TARGET_VEL_LIMIT);
 
-      // Đọc current_altitude được cập nhật bởi TaskTelemetry
-      float cur_alt_cm = current_altitude;
-      kalman_2d(az_inertial, cur_alt_cm);
-
-      // PID velocity Z (target vel = 0 → giữ độ cao)
-      float vel_err = 0.0f - VelocityVerticalKalman;
+      // Vòng trong: velocity -> throttle correction
+      float vel_err = target_vz - VelocityVerticalKalman;
       float p_vel = g_local.kp_vel_z * vel_err;
-      float i_vel = pre_vel_z_iterm + g_local.ki_vel_z * (vel_err + pre_vel_z_err) * dt_angle / 2.0f;
-      i_vel = constrain(i_vel, -400.0f, 400.0f);
-      float d_vel = g_local.kd_vel_z * (vel_err - pre_vel_z_err);
+
+      float i_vel = pre_vel_z_iterm + g_local.ki_vel_z * vel_err * dt_angle;
+      i_vel = constrain(i_vel, -250.0f, 250.0f);
+
+      // Derivative on measurement để tránh giật khi target_alt thay đổi.
+      float d_meas = -(VelocityVerticalKalman - last_vz_for_d) / dt_angle;
+      last_vz_for_d = VelocityVerticalKalman;
+      float d_vel = g_local.kd_vel_z * d_meas;
+
       float pid_v = constrain(p_vel + i_vel + d_vel, -300.0f, 300.0f);
 
       pre_vel_z_err = vel_err;
       pre_vel_z_iterm = i_vel;
 
-      thr_out = (int)pid_v;
+      // Bù mất lực nâng khi nghiêng. Giới hạn để tránh tăng ga quá mạnh.
+      float thrust_comp = 1.0f / constrain(cosf(roll_rad) * cosf(pitch_rad), 0.75f, 1.0f);
+      thrust_comp = constrain(thrust_comp, 1.0f, 1.30f);
 
+      thr_out = (int)(pid_v * thrust_comp);
+      // Serial.println(thr_out);
       // Publish acc_z & pid_vel để log
       xSemaphoreTake(xFlightMutex, portMAX_DELAY);
       gFlight.acc_z_inertial = az_inertial;
@@ -653,6 +721,7 @@ void TaskAngleControl(void *pvParameters) {
       // Reset integrator altitude khi tắt alt hold
       pre_vel_z_err = 0;
       pre_vel_z_iterm = 0;
+      last_vz_for_d = VelocityVerticalKalman;
     }
 
     // ── 9. Cập nhật throttle (nếu alt_hold) + targets vào gFlight ─
@@ -662,22 +731,93 @@ void TaskAngleControl(void *pvParameters) {
     gFlight.yaw = new_yaw;
     gFlight.pitch_acc = pitch_acc;
     gFlight.roll_acc = roll_acc;
+    gFlight.AltitudeKalman = AltitudeKalman;
+    gFlight.VelocityVerticalKalman = VelocityVerticalKalman;
     gFlight.KalmanUncertaintyAnglePitch = new_unc_p;
     gFlight.KalmanUncertaintyAngleRoll = new_unc_r;
     gFlight.target_rate_pitch = rate_sp_pitch;
     gFlight.target_rate_roll = rate_sp_roll;
     gFlight.target_rate_yaw = rate_sp_yaw;
     if (alt_hold_local) {
-      gFlight.throttle = constrain(BASE_HOVER_THROTTLE + thr_out, 1000, 2000);
+      gFlight.throttle = (int)BASE_HOVER_THROTTLE+ thr_out;
+      gFlight.throttle = constrain(gFlight.throttle, 1000, 2000);
+      Serial.println(BASE_HOVER_THROTTLE);
+      Serial.println(thr_out);
     }
     xSemaphoreGive(xFlightMutex);
-    // Serial.println(gFlight.pitch);
+
+    // debug();
     vTaskDelayUntil(&xLastWake, xPeriod);
   }
 }
 
 // ════════════════════════════════════════════════════════════
-//  TASK 3 — COMMUNICATION (20Hz, Core 1, Priority 3)
+//  TASK 3 — ALTITUDE SENSOR READ (50Hz, Core 0, Priority 4)
+//  Trách nhiệm:
+//    - Đọc BM280, TOF
+// ════════════════════════════════════════════════════════════
+void TaskAltitudeSensor(void *pvParameters) {
+  TickType_t xLastWakeTime = xTaskGetTickCount();
+  const TickType_t xFrequency = pdMS_TO_TICKS(20); // 50Hz
+  float vz_local = 0.0;
+  for (;;) {
+    float bmp_cm = 0.0f;
+    int tof_mm = -1;
+    bool sensor_read_ok = false;
+
+    // Chỉ khóa I2C khi đọc sensor
+    if (xSemaphoreTake(xI2CMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+      bmp_cm = (bmp.readAltitude() - alt_ofgFlightet) * 100.0f;
+      tof_mm = readTOF();
+      xSemaphoreGive(xI2CMutex);
+      sensor_read_ok = true;
+      // Serial.println("hic");
+    }
+    // else
+    //   Serial.println("not get i2cMutex");
+    // Serial.println(tof_mm);
+    if (sensor_read_ok) {
+      bool tof_ok = false;
+      float R_cm2 = R_BMP;
+
+      float roll_local = 0.0f;
+      float pitch_local = 0.0f;
+
+      if (xSemaphoreTake(xFlightMutex, pdMS_TO_TICKS(3)) == pdTRUE) {
+        roll_local = gFlight.roll;
+        pitch_local = gFlight.pitch;
+        vz_local = gFlight.VelocityVerticalKalman;
+        xSemaphoreGive(xFlightMutex);
+      }
+
+
+      float alt_cm = processAltitudeMeasurement(
+        tof_mm,
+        roll_local,
+        pitch_local,
+        bmp_cm,
+        vz_local,
+        0.02f,
+        tof_ok,
+        R_cm2
+      );
+      // Serial.printf("tof_mm=%d bmp=%.1f alt=%.1f R=%.1f tof_ok=%d\n",
+      //         tof_mm, bmp_cm, alt_cm, R_cm2, tof_ok);
+      if (xSemaphoreTake(xAltMutex, pdMS_TO_TICKS(1)) == pdTRUE) {
+        current_altitude = alt_cm;
+        altitude_meas_R_cm2 = R_cm2;
+        tof_valid = tof_ok;
+        altitude_meas_new = true;
+        xSemaphoreGive(xAltMutex);
+      }
+    }
+    // debug();
+    vTaskDelayUntil(&xLastWakeTime, xFrequency);
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+//  TASK 4 — COMMUNICATION (20Hz, Core 1, Priority 3)
 //  Trách nhiệm:
 //    - Đọc NRF24 (radio)
 //    - Cập nhật targets + throttle vào FlightState
@@ -713,12 +853,18 @@ void TaskCommunication(void *pvParameters) {
       gFlight.pos_hold = (bool)rx_buf.nut2;
 
       // Khi bật alt_hold lần đầu → chốt target altitude
+      static bool alt_init = false;
       if (gFlight.alt_hold && !gFlight.pos_hold) {
-        static bool alt_init = false;
         if (!alt_init) {
-          gFlight.target_alt = AltitudeKalman;
+          gFlight.target_alt = gFlight.AltitudeKalman;
+          BASE_HOVER_THROTTLE = gFlight.throttle;
+          pre_vel_z_err = 0;
+          pre_vel_z_iterm = 0;
+          last_vz_for_d = gFlight.VelocityVerticalKalman;
           alt_init = true;
         }
+      } else {
+        alt_init = false;
       }
 
       // Throttle chỉ cho remote control nếu KHÔNG alt hold
@@ -758,21 +904,108 @@ void TaskCommunication(void *pvParameters) {
   }
 }
 
+
 // ════════════════════════════════════════════════════════════
-//  TASK 4 — TELEMETRY & SENSORS (10Hz, Core 0, Priority 2)
+//  TOF + BMP altitude measurement processing
+//  Output: altitude cm và R đo lường cm^2 để đưa vào Kalman
+// ════════════════════════════════════════════════════════════
+float processAltitudeMeasurement(int tof_mm,
+                                 float roll_deg,
+                                 float pitch_deg,
+                                 float bmp_cm,
+                                 float vz_cm_s,
+                                 float dt,
+                                 bool &tof_ok_out,
+                                 float &R_out_cm2) {
+
+  tof_ok_out = false;
+  R_out_cm2 = R_BMP;
+
+  if (tof_mm <= 0 || tof_mm > 9500) {
+    return bmp_cm;
+  }
+
+  float tof_raw_cm = tof_mm * 0.1f;
+
+  // Nếu nghiêng lớn, tia TOF nhìn lệch nhiều, không nên tin.
+  if (fabsf(roll_deg) > 25.0f || fabsf(pitch_deg) > 25.0f) {
+    return bmp_cm;
+  }
+
+  // Bù nghiêng: TOF đo đường xiên, cần chiếu về phương thẳng đứng.
+  float roll_rad  = roll_deg * DEG_TO_RAD;
+  float pitch_rad = pitch_deg * DEG_TO_RAD;
+  float tof_cm = tof_raw_cm * cosf(roll_rad) * cosf(pitch_rad);
+
+  if (!last_tof_ok) {
+    last_tof_cm = tof_cm;
+    last_tof_ok = true;
+    tof_ok_out = true;
+    R_out_cm2 = R_TOF_GOOD;
+    return 0.85f * tof_cm + 0.15f * bmp_cm;
+  }
+
+  float delta = tof_cm - last_tof_cm;
+  float rate = delta / constrain(dt, 0.02f, 0.2f);
+
+  // TOF nhảy quá nhanh so với động học Z của drone: reject.
+  if (fabsf(rate) > 1000.0f) {  // lech 1m 
+    R_out_cm2 = R_BMP;
+    return bmp_cm;
+  }
+
+  // TOF giảm mạnh nhưng velocity Z không cho thấy drone đang rơi nhanh:
+  // khả năng cao là cây/cỏ/vật cản bên dưới.
+  if (delta < -50.0f && vz_cm_s > -120.0f) {
+    R_out_cm2 = R_BMP;
+    return bmp_cm;
+  }
+
+  // TOF tăng mạnh: có thể gặp vùng trũng. Không bỏ hoàn toàn, nhưng giảm độ tin cậy.
+  bool terrain_step_suspected = (delta > 80.0f && fabsf(vz_cm_s) < 120.0f);
+
+  // Low-pass nhẹ cho TOF.
+  float tof_filtered = 0.75f * last_tof_cm + 0.25f * tof_cm;    // cm
+  last_tof_cm = tof_filtered;
+  tof_ok_out = true;
+
+  if (terrain_step_suspected) {
+    R_out_cm2 = R_TOF_BAD;
+    return 0.30f * tof_filtered + 0.70f * bmp_cm;
+  }
+
+  float w_tof = 0.0f;
+
+  if (tof_filtered < 300.0f) {
+    w_tof = 0.98f;
+  } else if (tof_filtered < 800.0f) {
+    w_tof = 0.95f;
+  } else if (tof_filtered < 1000.0f) {
+    float alpha = (tof_filtered - 800.0f) / 200.0f;
+    alpha = constrain(alpha, 0.0f, 1.0f);
+    w_tof = 0.95f + alpha * (0.50f - 0.95f);
+  } else {
+    w_tof = 0.0f;
+  }
+
+  float w_bmp = 1.0f - w_tof;
+
+  R_out_cm2 =
+    w_tof * w_tof * R_TOF_GOOD +
+    w_bmp * w_bmp * R_BMP;
+
+  return w_tof * tof_filtered + w_bmp * bmp_cm;
+}
+
+// ════════════════════════════════════════════════════════════
+//  TASK 5 — TELEMETRY & SENSORS (10Hz, Core 0, Priority 2)
 //  Trách nhiệm:
-//    - Đọc BMP280 (altitude)
 //    - Đọc INA219 (battery)
 //    - Đọc GPS
 //    - Ghi log
 // ════════════════════════════════════════════════════════════
 void TaskTelemetry(void *pvParameters) {
   for (;;) {
-    /*──------------------ BMP280 ─────────────────────────────────────────*/
-    if (xSemaphoreTake(xI2CMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
-      current_altitude = (bmp.readAltitude() - alt_ofgFlightet) * 100.0f;  // cm
-      xSemaphoreGive(xI2CMutex);
-    }
 
     // // ── INA219 battery ─────────────────────────────────
     // // INA219 cũng dùng I2C
@@ -815,8 +1048,8 @@ void TaskWebServer(void *pvParameters) {
   Serial.println(WiFi.softAPIP());
 
   for (;;) {
-    // server.handleClient();
-    vTaskDelay(pdMS_TO_TICKS(10));
+    server.handleClient();
+    vTaskDelay(pdMS_TO_TICKS(100));
   }
 }
 
@@ -854,37 +1087,13 @@ float mapf(float x, float in_min, float in_max, float out_min, float out_max) {
 
 void debug()
 {
-  float dbg_pitch, dbg_roll;
+  float dbg_pitch, dbg_roll, tar_pitch, tar_roll;
   xSemaphoreTake(xFlightMutex, portMAX_DELAY);
   dbg_pitch = gFlight.pitch;
   dbg_roll  = gFlight.roll;
+  tar_pitch = gFlight.target_pitch;
+  tar_roll = gFlight.target_roll;
   xSemaphoreGive(xFlightMutex);
-
-  Serial.printf("pitch=%.2f roll=%.2f vel=%.2f\n",
-                dbg_pitch, dbg_roll, VelocityVerticalKalman);
-  // Serial.print("Pitch:");  // nghieng phai la duong
-  // Serial.print(gFlight.pitch);
-  // Serial.print(" target_pitch:");
-  // Serial.print(gFlight.target_pitch);
-  // Serial.print("  TargetRate:");
-  // Serial.print(gFlight.target_rate_pitch);
-  // Serial.print(" PID_P");
-  // Serial.println(gFlight.pid_p);
-  // Format: Pitch, TargetPitch, TargetRate, PID_P
-  // Serial.print(gFlight.pitch); Serial.print(",");
-  // Serial.print(gFlight.target_pitch); Serial.print(",");
-  // Serial.print(gFlight.target_rate_pitch); Serial.print(",");
-  // Serial.println(gFlight.pid_p);
-  // Serial.print("roll:");  // nghieng phai la duong
-  // Serial.print(gFlight.roll);
-  // Serial.print(" target_roll:");
-  // Serial.print(gFlight.target_roll);
-  // Serial.print("  TargetRate:");
-  // Serial.print(gFlight.target_rate_roll);
-  // Serial.print(" PID_R");
-  // Serial.println(gFlight.pid_r);
-  // Serial.print(gFlight.roll); Serial.print(",");
-  // Serial.print(gFlight.target_roll); Serial.print(",");
-  // Serial.print(gFlight.target_rate_roll); Serial.print(",");
-  // Serial.println(gFlight.pid_r);
+  Serial.printf("pitch=%.2f roll=%.2f tar_pitch=%.2f tar_roll=%.2f\n",
+                dbg_pitch, dbg_roll, tar_pitch, tar_roll);
 }

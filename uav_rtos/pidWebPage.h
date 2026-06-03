@@ -6,7 +6,8 @@
 // ===== EXTERN OBJECTS =====
 // WebServer server — defined in uav_rtos.ino
 extern WebServer server;
-
+extern SemaphoreHandle_t xFlightMutex;
+extern SemaphoreHandle_t xGainsMutex;
 extern FlightState gFlight;
 extern PidGains gains;
 
@@ -89,47 +90,61 @@ setInterval(()=>{
 
 // ===== HANDLE SET PID =====
 void handleSetPID() {
+  PidGains newGains;
 
-  if (server.hasArg("kp_r")) gains.kp_r = server.arg("kp_r").toFloat();
-  if (server.hasArg("ki_r")) gains.ki_r = server.arg("ki_r").toFloat();
-  if (server.hasArg("kd_r")) gains.kd_r = server.arg("kd_r").toFloat();
+  xSemaphoreTake(xGainsMutex, portMAX_DELAY);
+  newGains = gains;
+  xSemaphoreGive(xGainsMutex);
 
-  if (server.hasArg("kp_p")) gains.kp_p = server.arg("kp_p").toFloat();
-  if (server.hasArg("ki_p")) gains.ki_p = server.arg("ki_p").toFloat();
-  if (server.hasArg("kd_p")) gains.kd_p = server.arg("kd_p").toFloat();
+  if (server.hasArg("kp_r")) newGains.kp_r = server.arg("kp_r").toFloat();
+  if (server.hasArg("ki_r")) newGains.ki_r = server.arg("ki_r").toFloat();
+  if (server.hasArg("kd_r")) newGains.kd_r = server.arg("kd_r").toFloat();
 
-  if (server.hasArg("kp_y")) gains.kp_y = server.arg("kp_y").toFloat();
-  if (server.hasArg("ki_y")) gains.ki_y = server.arg("ki_y").toFloat();
-  if (server.hasArg("kd_y")) gains.kd_y = server.arg("kd_y").toFloat();
+  if (server.hasArg("kp_p")) newGains.kp_p = server.arg("kp_p").toFloat();
+  if (server.hasArg("ki_p")) newGains.ki_p = server.arg("ki_p").toFloat();
+  if (server.hasArg("kd_p")) newGains.kd_p = server.arg("kd_p").toFloat();
 
-  if (server.hasArg("kp_angle")) gains.kp_angle = server.arg("kp_angle").toFloat();
-  if (server.hasArg("ki_angle")) gains.ki_angle = server.arg("ki_angle").toFloat();
-  if (server.hasArg("kd_angle")) gains.kd_angle = server.arg("kd_angle").toFloat();
+  if (server.hasArg("kp_y")) newGains.kp_y = server.arg("kp_y").toFloat();
+  if (server.hasArg("ki_y")) newGains.ki_y = server.arg("ki_y").toFloat();
+  if (server.hasArg("kd_y")) newGains.kd_y = server.arg("kd_y").toFloat();
 
-  if (server.hasArg("kp_vel_z")) gains.kp_vel_z = server.arg("kp_vel_z").toFloat();
-  if (server.hasArg("ki_vel_z")) gains.ki_vel_z = server.arg("ki_vel_z").toFloat();
-  if (server.hasArg("kd_vel_z")) gains.kd_vel_z = server.arg("kd_vel_z").toFloat();
+  if (server.hasArg("kp_angle")) newGains.kp_angle = server.arg("kp_angle").toFloat();
+  if (server.hasArg("ki_angle")) newGains.ki_angle = server.arg("ki_angle").toFloat();
+  if (server.hasArg("kd_angle")) newGains.kd_angle = server.arg("kd_angle").toFloat();
 
+  if (server.hasArg("kp_vel_z")) newGains.kp_vel_z = server.arg("kp_vel_z").toFloat();
+  if (server.hasArg("ki_vel_z")) newGains.ki_vel_z = server.arg("ki_vel_z").toFloat();
+  if (server.hasArg("kd_vel_z")) newGains.kd_vel_z = server.arg("kd_vel_z").toFloat();
+
+  xSemaphoreTake(xGainsMutex, portMAX_DELAY);
+  gains = newGains;
+  xSemaphoreGive(xGainsMutex);
+
+  xSemaphoreTake(xFlightMutex, portMAX_DELAY);
   if (server.hasArg("target_pitch")) gFlight.target_pitch = server.arg("target_pitch").toFloat();
-  if (server.hasArg("target_roll")) gFlight.target_roll = server.arg("target_roll").toFloat();
+  if (server.hasArg("target_roll"))  gFlight.target_roll  = server.arg("target_roll").toFloat();
+  xSemaphoreGive(xFlightMutex);
 
   server.sendHeader("Location", "/");
   server.send(303);
 }
-
 // ===== REALTIME DATA =====
 void handleData() {
+  FlightState fs;
+
+  xSemaphoreTake(xFlightMutex, portMAX_DELAY);
+  fs = gFlight;
+  xSemaphoreGive(xFlightMutex);
+
   String json = "{";
-
-  json += "\"pitch\":" + String(gFlight.pitch) + ",";
-  json += "\"roll\":" + String(gFlight.roll) + ",";
-  json += "\"yaw\":" + String(gFlight.yaw) + ",";
-  json += "\"throttle\":" + String(gFlight.throttle) + ",";
-  json += "\"alt\":" + String(gFlight.AltitudeKalman) + ",";
-  json += "\"vel_z\":" + String(gFlight.VelocityVerticalKalman) + ",";
-  json += "\"pid_vel\":" + String(gFlight.pid_vel) + ",";
-  json += "\"acc_z\":" + String(gFlight.acc_z_inertial);
-
+  json += "\"pitch\":" + String(fs.pitch) + ",";
+  json += "\"roll\":" + String(fs.roll) + ",";
+  json += "\"yaw\":" + String(fs.yaw) + ",";
+  json += "\"throttle\":" + String(fs.throttle) + ",";
+  json += "\"alt\":" + String(fs.AltitudeKalman) + ",";
+  json += "\"vel_z\":" + String(fs.VelocityVerticalKalman) + ",";
+  json += "\"pid_vel\":" + String(fs.pid_vel) + ",";
+  json += "\"acc_z\":" + String(fs.acc_z_inertial);
   json += "}";
 
   server.send(200, "application/json", json);

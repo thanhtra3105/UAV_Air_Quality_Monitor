@@ -8,7 +8,7 @@ extern volatile uint8_t log_flag;
 
 // ─── Các biến cần log — định nghĩa trong uav_rtos.ino ────────
 extern float acc_z_inertial;
-extern float current_altitude;     // cm (từ BMP280, cập nhật bởi Telemetry)
+extern volatile float current_altitude;     // cm (từ BMP280, cập nhật bởi Telemetry)
 extern float VelocityVerticalKalman;
 extern float pid_vel;
 extern float bat_voltage;
