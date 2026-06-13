@@ -25,6 +25,10 @@ m3 (CW)      m2 (CCW)
 #include "kalman_filter.h"
 #include "poshold.h"
 #include "log.h"
+#include "gy_tof.h"
+
+#define RAD_TO_DEG 57.2958f
+#define DEG_TO_RAD 0.017453f
 
 #define MPU_ADDR 0x68
 #define PWM_FREQ 500
@@ -51,6 +55,9 @@ float ax, ay, az;
 float ax_offset = 0.0;
 float ay_offset = 0.0;
 float az_offset = 0.0;
+float gx_offset = 0.0;
+float gy_offset = 0.0;
+float gz_offset = 0.0;
 
 // ===== ANGLE =====
 float i_angle_p = 0, i_angle_r = 0;
@@ -216,9 +223,13 @@ void setup() {
   // ax_offset = (ax_offset / 500);
   // ay_offset = (ay_offset / 500);
   // az_offset = (az_offset / 500);
-  ax_offset = 0.05692;
-  ay_offset = 0.02593;
-  az_offset = 9.35071;
+  // 
+  ax_offset = 0.09940;
+  ay_offset = 0.04193;
+  az_offset = 9.33029;
+  gx_offset = -0.08780;
+  gy_offset = 0.02199;
+  gz_offset = 0.00245;
   Serial.print("Calib az done with ax, ay, az offset: ");
   Serial.print(ax_offset);
   Serial.print(",");
@@ -272,13 +283,21 @@ void setup() {
 
   kalman_setup();
 
-  Serial.println("Calculating Kalman gain...");
-
   delay(100);
   static float pre_K_alt = 0;
   static float pre_K_vel = 0;
 
   // logDataSetup();
+  while (1) {
+    if (radio.available()) {
+      radio.read(&rx, sizeof(rx));
+      if (rx.chinhtocdoquat == 0)
+        break;
+    }
+  }
+
+  Serial.println("START");
+  delay(100);
   lastTime = micros();
 }
 
@@ -305,22 +324,23 @@ void loop() {
     target_yaw = yaw;
     i_yaw = 0;
   }
-  readAlt();
   calculateAngle();
 
-  acc_z_inertial = -sin(pitch * (3.142f / 180.0f)) * ax
-                   + cos(pitch * (3.142f / 180.0f)) * sin(roll * (3.142f / 180.0f)) * ay
-                   + cos(pitch * (3.142f / 180.0f)) * cos(roll * (3.142f / 180.0f)) * az;
-  acc_z_inertial = (acc_z_inertial - az_offset) * 100.0f;  // cm/s2
-  // VelocityVertical=VelocityVertical 	+AccZInertial*0.004;
+  // acc_z_inertial = -sin(pitch * (3.142f / 180.0f)) * ax
+  //                  + cos(pitch * (3.142f / 180.0f)) * sin(roll * (3.142f / 180.0f)) * ay
+  //                  + cos(pitch * (3.142f / 180.0f)) * cos(roll * (3.142f / 180.0f)) * az;
+  // acc_z_inertial = (acc_z_inertial - az_offset) * 100.0f;  // cm/s2
+  // float bmp_cm = (bmp.readAltitude() - alt_ofgFlightet) * 100.0f;
+  
+  // kalman_2d(acc_z_inertial, current_alt);
 
-  kalman_2d(acc_z_inertial, current_alt);
-
-  // readGPS();
-  // poshold_predict_imu();  // call sau khi tinh accel
   calculateAnglePID();
   calculateRatePID();
 
+  float tof_cm = readTOF()/10;
+  float roll_rad  = roll * DEG_TO_RAD;
+  float pitch_rad = pitch * DEG_TO_RAD;
+  current_alt = tof_cm * cosf(roll_rad) * cosf(pitch_rad);
   // ===== HOLD VELOCITY =======
   const int BASE_HOVER_THROTTLE = 1450;
 
@@ -328,23 +348,30 @@ void loop() {
     Serial.println("Khoi tao vi tri hien tai 1 lan");
     alt_init = true;
     preIterm = 0;
-
+    target_alt = current_alt;
     // hold_lat = current_lat;
     // hold_lon = current_lon;
   }
   if (alt_hold) {
-    float target_vel = 0;
-    if (rx.chinhtocdoquat > 70) {
-      target_vel = map(rx.chinhtocdoquat, 55, 100, 0, 80);  // Tốc độ lên tối đa 100cm/s
-    } else if (rx.chinhtocdoquat < 30) {
-      target_vel = map(rx.chinhtocdoquat, 0, 45, -80, 0);  // Tốc độ xuống tối đa -100cm/s
-    }
-    // Serial.print("target_vel: ");
-    // Serial.println(target_vel);
-    pid_vel = calVelPID(target_vel);
-    throttle = BASE_HOVER_THROTTLE + pid_vel;
-    if (throttle > 1800) throttle = 1800;
-    logData();
+    // float target_vel = 0;
+    // if (rx.chinhtocdoquat > 70) {
+    //   target_vel = map(rx.chinhtocdoquat, 55, 100, 0, 80);  // Tốc độ lên tối đa 100cm/s
+    // } else if (rx.chinhtocdoquat < 30) {
+    //   target_vel = map(rx.chinhtocdoquat, 0, 45, -80, 0);  // Tốc độ xuống tối đa -100cm/s
+    // }
+    // // Serial.print("target_vel: ");
+    // // Serial.println(target_vel);
+    // pid_vel = calVelPID(target_vel);
+    // throttle = BASE_HOVER_THROTTLE + pid_vel;
+    // if (throttle > 1800) throttle = 1800;
+    // logData();
+
+    float alt_err = target_alt - current_alt;
+    pid_alt = pid_equation(err_alt, 6, 0, 1, last_err_alt, 0);
+    last_err_alt = alt_err;
+    // Serial.println(pid_alt);7
+
+
   } else {
     alt_init = false;
   }
@@ -353,6 +380,7 @@ void loop() {
 
   // debug();
   // Serial.println(pitch);
+  // Serial.printf("pitch=%.2f roll=%.2f\n",pitch, roll);
 }
 
 void bmp280_setup() {
@@ -426,25 +454,32 @@ void calculateAngle() {
   mpu.getEvent(&a, &g, &t);
 
 
-  gx = g.gyro.x * 57.2958;
-  gy = g.gyro.y * 57.2958;
-  gz = -g.gyro.z * 57.2958;
+  gx = (g.gyro.x - gx_offset) * 57.2958;
+  gy = (g.gyro.y - gy_offset) * 57.2958;
+  gz = -(g.gyro.z - gz_offset) * 57.2958;
 
-  ax = a.acceleration.x;
-  ay = a.acceleration.y;
-  az = a.acceleration.z;
-  // ===== ANGLE PITCH =====
-  pitch_acc = atan2(-a.acceleration.x,
-                    sqrt(a.acceleration.y * a.acceleration.y + a.acceleration.z * a.acceleration.z))
-              * 57.2958;
-  // ===== ANGLE ROLL =====
-  roll_acc = atan2(
-               a.acceleration.y,
-               sqrt(a.acceleration.x * a.acceleration.x + a.acceleration.z * a.acceleration.z))
-             * 57.2958;
-  pitch = 0.98 * (pitch + gy * dt) + 0.02 * pitch_acc;
-  roll = 0.98 * (roll + gx * dt) + 0.02 * roll_acc;
+  ax = a.acceleration.x - ax_offset;
+  ay = a.acceleration.y - ay_offset;
+  az = a.acceleration.z - (az_offset - 9.81);
+  // // ===== ANGLE PITCH =====
+  pitch_acc = atan2(-ax, sqrt(ay * ay + az * az)) * 57.2958;
+  roll_acc = atan2(ay, sqrt(ax * ax + az * az)) * 57.2958;
+  /* COMPLEMENTARY FILTER*/
+  // pitch = 0.98 * (pitch + gy * dt) + 0.02 * pitch_acc;
+  // roll = 0.98 * (roll + gx * dt) + 0.02 * roll_acc;
 
+  /*======== KALMAN FILTER =======*/
+  // Cho Roll
+  kalman_1d(roll, KalmanUncertaintyAngleRoll, gx, roll_acc);
+  roll = Kalman1DOutput[0];
+  KalmanUncertaintyAngleRoll = Kalman1DOutput[1];
+
+  // Cho Pitch
+  kalman_1d(pitch, KalmanUncertaintyAnglePitch, gy, pitch_acc);
+  pitch = Kalman1DOutput[0];
+  KalmanUncertaintyAnglePitch = Kalman1DOutput[1];
+
+  // Serial.printf("pitch=%.2f, roll=%.2f\n", pitch, roll);
   // ================= YAW (COMPASS) =================
   sVector_t mag = compass.readRaw();
   compass.getHeadingDegrees();
@@ -500,10 +535,10 @@ void calculateRatePID() {
 }
 
 void mixer() {
-  int m1 = throttle - pid_p + pid_r - pid_yaw;
-  int m2 = throttle - pid_p - pid_r + pid_yaw;
-  int m3 = throttle + pid_p - pid_r - pid_yaw;
-  int m4 = throttle + pid_p + pid_r + pid_yaw;
+  int m1 = throttle - pid_p + pid_r - pid_yaw - pid_alt;
+  int m2 = throttle - pid_p - pid_r + pid_yaw - pid_alt;
+  int m3 = throttle + pid_p - pid_r - pid_yaw - pid_alt;
+  int m4 = throttle + pid_p + pid_r + pid_yaw - pid_alt;
   // int m1 = throttle - pid_p ;
   // int m2 = throttle - pid_p;
   // int m3 = throttle + pid_p;
@@ -641,3 +676,92 @@ float calVelPID(float vel_z_target) {
   preIterm = Iterm;
   return vel_z_PID;
 }
+
+
+// float processAltitudeMeasurement(int tof_mm,
+//                                  float roll_deg,
+//                                  float pitch_deg,
+//                                  float bmp_cm,
+//                                  float vz_cm_s,
+//                                  float dt,
+//                                  bool &tof_ok_out,
+//                                  float &R_out_cm2) {
+
+//   tof_ok_out = false;
+//   R_out_cm2 = R_BMP;
+
+//   if (tof_mm <= 0 || tof_mm > 9500) {
+//     return bmp_cm;
+//   }
+
+//   float tof_raw_cm = tof_mm * 0.1f;
+
+//   // Nếu nghiêng lớn, tia TOF nhìn lệch nhiều, không nên tin.
+//   if (fabsf(roll_deg) > 25.0f || fabsf(pitch_deg) > 25.0f) {
+//     return bmp_cm;
+//   }
+
+//   // Bù nghiêng: TOF đo đường xiên, cần chiếu về phương thẳng đứng.
+//   float roll_rad  = roll_deg * DEG_TO_RAD;
+//   float pitch_rad = pitch_deg * DEG_TO_RAD;
+//   float tof_cm = tof_raw_cm * cosf(roll_rad) * cosf(pitch_rad);
+
+//   if (!last_tof_ok) {
+//     last_tof_cm = tof_cm;
+//     last_tof_ok = true;
+//     tof_ok_out = true;
+//     R_out_cm2 = R_TOF_GOOD;
+//     return 0.85f * tof_cm + 0.15f * bmp_cm;
+//   }
+
+//   float delta = tof_cm - last_tof_cm;
+//   float rate = delta / constrain(dt, 0.02f, 0.2f);
+
+//   // TOF nhảy quá nhanh so với động học Z của drone: reject.
+//   if (fabsf(rate) > 1000.0f) {  // lech 1m 
+//     R_out_cm2 = R_BMP;
+//     return bmp_cm;
+//   }
+
+//   // TOF giảm mạnh nhưng velocity Z không cho thấy drone đang rơi nhanh:
+//   // khả năng cao là cây/cỏ/vật cản bên dưới.
+//   if (delta < -50.0f && vz_cm_s > -120.0f) {
+//     R_out_cm2 = R_BMP;
+//     return bmp_cm;
+//   }
+
+//   // TOF tăng mạnh: có thể gặp vùng trũng. Không bỏ hoàn toàn, nhưng giảm độ tin cậy.
+//   bool terrain_step_suspected = (delta > 80.0f && fabsf(vz_cm_s) < 120.0f);
+
+//   // Low-pass nhẹ cho TOF.
+//   float tof_filtered = 0.75f * last_tof_cm + 0.25f * tof_cm;    // cm
+//   last_tof_cm = tof_filtered;
+//   tof_ok_out = true;
+
+//   if (terrain_step_suspected) {
+//     R_out_cm2 = R_TOF_BAD;
+//     return 0.30f * tof_filtered + 0.70f * bmp_cm;
+//   }
+
+//   float w_tof = 0.0f;
+
+//   if (tof_filtered < 300.0f) {
+//     w_tof = 0.98f;
+//   } else if (tof_filtered < 800.0f) {
+//     w_tof = 0.95f;
+//   } else if (tof_filtered < 1000.0f) {
+//     float alpha = (tof_filtered - 800.0f) / 200.0f;
+//     alpha = constrain(alpha, 0.0f, 1.0f);
+//     w_tof = 0.95f + alpha * (0.50f - 0.95f);
+//   } else {
+//     w_tof = 0.0f;
+//   }
+
+//   float w_bmp = 1.0f - w_tof;
+
+//   R_out_cm2 =
+//     w_tof * w_tof * R_TOF_GOOD +
+//     w_bmp * w_bmp * R_BMP;
+
+//   return w_tof * tof_filtered + w_bmp * bmp_cm;
+// }
