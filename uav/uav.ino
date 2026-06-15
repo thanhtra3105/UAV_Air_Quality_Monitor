@@ -26,9 +26,9 @@ m3 (CW)      m2 (CCW)
 #include "poshold.h"
 #include "log.h"
 #include "gy_tof.h"
-
-#define RAD_TO_DEG 57.2958f
-#define DEG_TO_RAD 0.017453f
+#include "althold.h"
+#include "altitude_estimator.h"
+#include "pid_control.h"
 
 #define MPU_ADDR 0x68
 #define PWM_FREQ 500
@@ -49,6 +49,15 @@ m3 (CW)      m2 (CCW)
 #define M4_PIN 10
 
 #define GRAVITY 9.81
+
+float kp_alt_hold = 4.0f;
+float ki_alt_hold = 0.0f;
+float kd_alt_hold = 0.5f;
+
+PIDController altPID(
+  kp_alt_hold,
+  ki_alt_hold,
+  kd_alt_hold);
 
 float gx, gy, gz;
 float ax, ay, az;
@@ -108,7 +117,7 @@ float last_err_vz = 0.0;
 float target_vz = 0;
 float last_alt = 0;
 
-float danh_lai = 4.0;
+float danh_lai = 6.0;
 
 
 // --- CÁC BIẾN TOÀN CỤC ---
@@ -158,6 +167,7 @@ RF24 radio(CE_PIN, CSN_PIN);
 const byte address[6] = "00001";
 Adafruit_MPU6050 mpu;
 DFRobot_QMC5883 compass(&Wire, /*I2C addr*/ QMC5883_ADDRESS);
+AltitudeEstimator altEst;
 
 const char* ssid = "DRONE";
 const char* password = "L02012001";
@@ -223,7 +233,7 @@ void setup() {
   // ax_offset = (ax_offset / 500);
   // ay_offset = (ay_offset / 500);
   // az_offset = (az_offset / 500);
-  // 
+  //
   ax_offset = 0.09940;
   ay_offset = 0.04193;
   az_offset = 9.33029;
@@ -282,7 +292,8 @@ void setup() {
   Serial.println(WiFi.softAPIP());
 
   kalman_setup();
-
+  /*ALTITUDE EST SETUP*/
+  altEst.begin();
   delay(100);
   static float pre_K_alt = 0;
   static float pre_K_vel = 0;
@@ -325,25 +336,63 @@ void loop() {
     i_yaw = 0;
   }
   calculateAngle();
-
-  // acc_z_inertial = -sin(pitch * (3.142f / 180.0f)) * ax
-  //                  + cos(pitch * (3.142f / 180.0f)) * sin(roll * (3.142f / 180.0f)) * ay
-  //                  + cos(pitch * (3.142f / 180.0f)) * cos(roll * (3.142f / 180.0f)) * az;
-  // acc_z_inertial = (acc_z_inertial - az_offset) * 100.0f;  // cm/s2
-  // float bmp_cm = (bmp.readAltitude() - alt_ofgFlightet) * 100.0f;
-  
-  // kalman_2d(acc_z_inertial, current_alt);
-
   calculateAnglePID();
   calculateRatePID();
 
-  float tof_cm = readTOF()/10;
-  float roll_rad  = roll * DEG_TO_RAD;
-  float pitch_rad = pitch * DEG_TO_RAD;
-  current_alt = tof_cm * cosf(roll_rad) * cosf(pitch_rad);
   // ===== HOLD VELOCITY =======
   const int BASE_HOVER_THROTTLE = 1450;
+  bool tof_ok = false;
+  acc_z_inertial = -sin(pitch * DEG_TO_RAD) * ax
+                   + cos(pitch * DEG_TO_RAD) * sin(roll * DEG_TO_RAD) * ay
+                   + cos(pitch * DEG_TO_RAD) * cos(roll * DEG_TO_RAD) * az;
+  acc_z_inertial = (acc_z_inertial - 9.81) * 100.0f;  // cm/s2
 
+  static float bmp_filt = 0.0f;
+  float bmp_cm = (bmp.readAltitude() - alt_offset) * 100.0f;
+  bmp_filt = 0.95f * bmp_filt + 0.05f * bmp_cm;
+
+  float tof_cm = readTOF() * 0.1f;
+  // Serial.printf("tof_cm=%0.2f\n", tof_cm);
+  if (tof_cm > 0.0f) {
+    tof_ok = true;
+    tof_cm = tof_cm * cosf(roll * DEG_TO_RAD) * cosf(pitch * DEG_TO_RAD);
+    // Serial.printf("tof_cm sau=%0.2f\n", tof_cm);
+  }
+  static bool tof_init = false;
+  static float alt_filt = 0;
+
+  if (!tof_init) {
+    alt_filt = tof_cm;
+    tof_init = true;
+  }
+
+  alt_filt = 0.6f * alt_filt + 0.4f * tof_cm;
+  current_alt = alt_filt;
+  // current_alt = tof_cm;
+  // Serial.printf("tof_cm=%0.2f\n", tof_cm);
+  // altEst.update(dt, acc_z_inertial, tof_cm, tof_ok, bmp_filt);
+  // Serial.printf(
+  //   "acc=%.2f tof=%.2f bmp=%.2f alt=%.2f vel=%.2f\n",
+  //   acc_z_inertial,
+  //   tof_cm,
+  //   bmp_filt,
+  //   altEst.altitude,
+  //   altEst.velocity);
+
+  // Serial.printf("alt=%0.2f, vel_z=%0.2f\n", altEst.altitude, altEst.velocity);
+  // float R_cm2 = R_BMP;
+
+  // current_alt = processAltitudeMeasurement(
+  //       tof_mm,
+  //       roll,
+  //       pitch,
+  //       bmp_cm,
+  //       0,
+  //       dt,
+  //       tof_ok,
+  //       R_cm2
+  //     );
+  // Serial.printf("alt=%0.2f\n", current_alt);
   if (alt_hold && !alt_init) {
     Serial.println("Khoi tao vi tri hien tai 1 lan");
     alt_init = true;
@@ -367,16 +416,17 @@ void loop() {
     // logData();
 
     float alt_err = target_alt - current_alt;
-    pid_alt = pid_equation(err_alt, 6, 0, 1, last_err_alt, 0);
-    last_err_alt = alt_err;
-    // Serial.println(pid_alt);7
-
+    pid_alt = altPID.calculate(alt_err, dt);
+    pid_alt = constrain(pid_alt, -200, 200);
+    throttle = BASE_HOVER_THROTTLE + pid_alt;
+    // Serial.printf("tof_cm=%0.2f, err=%0.2f, pid=%0.1f\n", tof_cm, alt_err, pid_alt);
 
   } else {
     alt_init = false;
+    altPID.reset();
   }
 
-  mixer();  // mix and control motor
+  mixer();
 
   // debug();
   // Serial.println(pitch);
@@ -418,6 +468,7 @@ void rxController() {
     log_flag = rx.nut2;
     if (!alt_hold) {
       throttle = map(rx.chinhtocdoquat, 0, 100, 1000, 1700);
+      // Serial.println(throttle);
       pos_hold_active = false;
     } else {
 
@@ -535,10 +586,10 @@ void calculateRatePID() {
 }
 
 void mixer() {
-  int m1 = throttle - pid_p + pid_r - pid_yaw - pid_alt;
-  int m2 = throttle - pid_p - pid_r + pid_yaw - pid_alt;
-  int m3 = throttle + pid_p - pid_r - pid_yaw - pid_alt;
-  int m4 = throttle + pid_p + pid_r + pid_yaw - pid_alt;
+  int m1 = throttle - pid_p + pid_r - pid_yaw;
+  int m2 = throttle - pid_p - pid_r + pid_yaw;
+  int m3 = throttle + pid_p - pid_r - pid_yaw;
+  int m4 = throttle + pid_p + pid_r + pid_yaw;
   // int m1 = throttle - pid_p ;
   // int m2 = throttle - pid_p;
   // int m3 = throttle + pid_p;
@@ -658,110 +709,21 @@ void debug() {
 }
 
 
-float pid_equation(float err, float kP, float kI, float kD, float preE, float preI) {
+float pid_equation(float err, float kP, float kI, float kD, float preE, float preI, float dt) {
   Pterm = kP * err;
   Iterm = preI + kI * (err + preE) * dt / 2;
-  Iterm = constrain(Iterm, -400, 400);
+  Iterm = constrain(Iterm, -200, 200);
 
-  Dterm = kD * (err - preE);
+  Dterm = kD * (err - preE) / dt;
   return (Pterm + Iterm + Dterm);
 }
 
 float calVelPID(float vel_z_target) {
   float vel_z_err = vel_z_target - VelocityVerticalKalman;
 
-  float vel_z_PID = pid_equation(vel_z_err, kp_vel_z, ki_vel_z, kd_vel_z, pre_vel_z_err, preIterm);
+  float vel_z_PID = pid_equation(vel_z_err, kp_vel_z, ki_vel_z, kd_vel_z, pre_vel_z_err, preIterm, 0);
   vel_z_PID = constrain(vel_z_PID, -300, 300);
   pre_vel_z_err = vel_z_err;
   preIterm = Iterm;
   return vel_z_PID;
 }
-
-
-// float processAltitudeMeasurement(int tof_mm,
-//                                  float roll_deg,
-//                                  float pitch_deg,
-//                                  float bmp_cm,
-//                                  float vz_cm_s,
-//                                  float dt,
-//                                  bool &tof_ok_out,
-//                                  float &R_out_cm2) {
-
-//   tof_ok_out = false;
-//   R_out_cm2 = R_BMP;
-
-//   if (tof_mm <= 0 || tof_mm > 9500) {
-//     return bmp_cm;
-//   }
-
-//   float tof_raw_cm = tof_mm * 0.1f;
-
-//   // Nếu nghiêng lớn, tia TOF nhìn lệch nhiều, không nên tin.
-//   if (fabsf(roll_deg) > 25.0f || fabsf(pitch_deg) > 25.0f) {
-//     return bmp_cm;
-//   }
-
-//   // Bù nghiêng: TOF đo đường xiên, cần chiếu về phương thẳng đứng.
-//   float roll_rad  = roll_deg * DEG_TO_RAD;
-//   float pitch_rad = pitch_deg * DEG_TO_RAD;
-//   float tof_cm = tof_raw_cm * cosf(roll_rad) * cosf(pitch_rad);
-
-//   if (!last_tof_ok) {
-//     last_tof_cm = tof_cm;
-//     last_tof_ok = true;
-//     tof_ok_out = true;
-//     R_out_cm2 = R_TOF_GOOD;
-//     return 0.85f * tof_cm + 0.15f * bmp_cm;
-//   }
-
-//   float delta = tof_cm - last_tof_cm;
-//   float rate = delta / constrain(dt, 0.02f, 0.2f);
-
-//   // TOF nhảy quá nhanh so với động học Z của drone: reject.
-//   if (fabsf(rate) > 1000.0f) {  // lech 1m 
-//     R_out_cm2 = R_BMP;
-//     return bmp_cm;
-//   }
-
-//   // TOF giảm mạnh nhưng velocity Z không cho thấy drone đang rơi nhanh:
-//   // khả năng cao là cây/cỏ/vật cản bên dưới.
-//   if (delta < -50.0f && vz_cm_s > -120.0f) {
-//     R_out_cm2 = R_BMP;
-//     return bmp_cm;
-//   }
-
-//   // TOF tăng mạnh: có thể gặp vùng trũng. Không bỏ hoàn toàn, nhưng giảm độ tin cậy.
-//   bool terrain_step_suspected = (delta > 80.0f && fabsf(vz_cm_s) < 120.0f);
-
-//   // Low-pass nhẹ cho TOF.
-//   float tof_filtered = 0.75f * last_tof_cm + 0.25f * tof_cm;    // cm
-//   last_tof_cm = tof_filtered;
-//   tof_ok_out = true;
-
-//   if (terrain_step_suspected) {
-//     R_out_cm2 = R_TOF_BAD;
-//     return 0.30f * tof_filtered + 0.70f * bmp_cm;
-//   }
-
-//   float w_tof = 0.0f;
-
-//   if (tof_filtered < 300.0f) {
-//     w_tof = 0.98f;
-//   } else if (tof_filtered < 800.0f) {
-//     w_tof = 0.95f;
-//   } else if (tof_filtered < 1000.0f) {
-//     float alpha = (tof_filtered - 800.0f) / 200.0f;
-//     alpha = constrain(alpha, 0.0f, 1.0f);
-//     w_tof = 0.95f + alpha * (0.50f - 0.95f);
-//   } else {
-//     w_tof = 0.0f;
-//   }
-
-//   float w_bmp = 1.0f - w_tof;
-
-//   R_out_cm2 =
-//     w_tof * w_tof * R_TOF_GOOD +
-//     w_bmp * w_bmp * R_BMP;
-
-//   return w_tof * tof_filtered + w_bmp * bmp_cm;
-// }

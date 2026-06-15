@@ -1,5 +1,6 @@
 #include <WiFi.h>
 #include <WebServer.h>
+#include "pid_control.h"
 WebServer server(80);
 
 extern float kp_r, kp_p, kp_yaw;
@@ -11,6 +12,10 @@ extern float danh_lai;
 extern int throttle;
 extern float AltitudeKalman;
 extern float VelocityVerticalKalman;
+extern float kp_alt_hold;
+extern float ki_alt_hold;
+extern float kd_alt_hold;
+extern PIDController altPID;
 
 String pidPage();
 void handleRoot();
@@ -111,6 +116,23 @@ String pidPage() {
   page += "<input id='kd_yaw' name='kd_yaw' value='" + String(kd_yaw, 3) + "' size='6'>";
   page += "<button type='button' onclick='inc(\"kd_yaw\",0.001,3)'>+</button><br><br>";
 
+  page += "<h3>ALT HOLD PID</h3>";
+
+  page += "KP_ALT ";
+  page += "<button type='button' onclick='dec(\"kp_alt\",0.1,2)'>-</button>";
+  page += "<input id='kp_alt' name='kp_alt' value='" + String(kp_alt_hold, 2) + "' size='6'>";
+  page += "<button type='button' onclick='inc(\"kp_alt\",0.1,2)'>+</button><br>";
+
+  page += "KI_ALT ";
+  page += "<button type='button' onclick='dec(\"ki_alt\",0.01,3)'>-</button>";
+  page += "<input id='ki_alt' name='ki_alt' value='" + String(ki_alt_hold, 3) + "' size='6'>";
+  page += "<button type='button' onclick='inc(\"ki_alt\",0.01,3)'>+</button><br>";
+
+  page += "KD_ALT ";
+  page += "<button type='button' onclick='dec(\"kd_alt\",0.01,3)'>-</button>";
+  page += "<input id='kd_alt' name='kd_alt' value='" + String(kd_alt_hold, 3) + "' size='6'>";
+  page += "<button type='button' onclick='inc(\"kd_alt\",0.01,3)'>+</button><br><br>";
+
   page += "<b>TUNING KP ANGLE </b><br>";
   page += "<button type='button' onclick='dec(\"kp_angle\",0.01,2)'>-</button>";
   page += "<input id='kp_angle' name='kp_angle' value='" + String(kp_angle, 2) + "' size='6'>";
@@ -173,10 +195,24 @@ void handleSetPID() {
   if (server.hasArg("target_pitch")) target_pitch = server.arg("target_pitch").toFloat();
   if (server.hasArg("target_roll")) target_roll = server.arg("target_roll").toFloat();
 
+  if (server.hasArg("kp_alt"))
+    kp_alt_hold = server.arg("kp_alt").toFloat();
+
+  if (server.hasArg("ki_alt"))
+    ki_alt_hold = server.arg("ki_alt").toFloat();
+
+  if (server.hasArg("kd_alt"))
+    kd_alt_hold = server.arg("kd_alt").toFloat();
+
   if (server.hasArg("danh_lai")) {
     danh_lai = server.arg("danh_lai").toFloat();
   }
 
+  altPID.set(
+      kp_alt_hold,
+      ki_alt_hold,
+      kd_alt_hold
+  );
 
   server.send(200, "text/html",
               "<h3>PID Updated!</h3><a href='/'>Back</a>");
