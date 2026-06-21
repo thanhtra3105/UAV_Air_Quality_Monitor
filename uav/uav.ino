@@ -12,7 +12,6 @@ m3 (CW)      m2 (CCW)
 
 */
 
-
 #include <SPI.h>
 #include <RF24.h>
 #include <Wire.h>
@@ -23,12 +22,14 @@ m3 (CW)      m2 (CCW)
 #include <Adafruit_BMP280.h>
 #include <SimpleKalmanFilter.h>
 #include "kalman_filter.h"
-#include "poshold.h"
 #include "log.h"
 #include "gy_tof.h"
 #include "althold.h"
 #include "altitude_estimator.h"
 #include "pid_control.h"
+#include "gps.h"
+#include "position_ekf.h"
+#include "poshold.h"
 
 #define MPU_ADDR 0x68
 #define PWM_FREQ 500
@@ -102,7 +103,8 @@ float pid_r, pid_p, pid_yaw, pid_alt;
 bool yaw_hold_init = false;
 bool alt_hold;  // nut 1 = giữ độ cao, nut 2 = bay tay
 bool alt_init = false;
-bool pos_hold_active = false;
+bool pos_hold = 0;
+bool pos_hold_init = false;
 
 // ===== PID RATE =====
 float kp_r = 0.85, ki_r = 0.000, kd_r = 0.0015;
@@ -307,11 +309,25 @@ void setup() {
     }
   }
 
+  // posEKF.begin();
+  flight_mode = 1;  // NORMAL
+
   Serial.println("START");
   delay(100);
   lastTime = micros();
 }
-
+/*
+void loop() {
+  gpsUpdate();
+  Serial.printf(
+    "x=%.2f y=%.2f vx=%.2f vy=%.2f sats=%d\n",
+    gps_x,
+    gps_y,
+    gps_vx,
+    gps_vy,
+    gps.satellites.value());
+}
+*/
 void loop() {
   // server.handleClient();
 
@@ -338,7 +354,7 @@ void loop() {
   calculateAngle();
   calculateAnglePID();
   calculateRatePID();
-
+  readGPS();
   // ===== HOLD VELOCITY =======
   const int BASE_HOVER_THROTTLE = 1450;
   bool tof_ok = false;
@@ -418,13 +434,43 @@ void loop() {
     float alt_err = target_alt - current_alt;
     pid_alt = altPID.calculate(alt_err, dt);
     pid_alt = constrain(pid_alt, -200, 200);
-    throttle = BASE_HOVER_THROTTLE + pid_alt;
+    // throttle = BASE_HOVER_THROTTLE + pid_alt;
     // Serial.printf("tof_cm=%0.2f, err=%0.2f, pid=%0.1f\n", tof_cm, alt_err, pid_alt);
+    if (pos_hold && !pos_hold_init) {
+      Serial.println("Pos hold mode is running!");
+      pos_hold_init = true;
+      flight_mode = 3;
+      waypoint_set = 0;  // to assign lat and lon current
+    }
+    if (pos_hold) {
+      target_pitch = (gps_pitch_pid_adjust / 15);
+      target_roll = (gps_roll_pid_adjust / 15);
+      // Giới hạn góc nghiêng tổng để an toàn (ví dụ tối đa 15 độ)
+      target_pitch = constrain(target_pitch, -15.0, 15.0);
+      target_roll = constrain(target_roll, -15.0, 15.0);
+    } else {
+      pos_hold_init = false;
+      flight_mode = 2;
+      gps_roll_pid_adjust = 0;
+      gps_pitch_pid_adjust = 0;
+    }
 
   } else {
     alt_init = false;
+    pid_alt = 0;
     altPID.reset();
+    flight_mode = 1;
+    gps_roll_pid_adjust = 0;
+    gps_pitch_pid_adjust = 0;
   }
+
+
+
+  // Serial.print("  target ");
+  // Serial.print(target_pitch);
+  // Serial.print(",");
+  // Serial.println(target_roll);
+
 
   mixer();
 
@@ -465,40 +511,30 @@ void rxController() {
   if (radio.available()) {
     radio.read(&rx, sizeof(rx));
     alt_hold = rx.nut1;
-    log_flag = rx.nut2;
+    pos_hold = rx.nut2;
     if (!alt_hold) {
       throttle = map(rx.chinhtocdoquat, 0, 100, 1000, 1700);
-      // Serial.println(throttle);
-      pos_hold_active = false;
     } else {
-
-      // pos_hold_active = true;
     }
-    // if (!pos_hold_active) {
-    //   target_pitch = map(rx.trucX, 0, 1023, danh_lai, -danh_lai);
-    //   target_roll = map(rx.trucY, 0, 1023, -danh_lai, danh_lai);
-    // }
     target_pitch = map(rx.trucX, 0, 1023, danh_lai, -danh_lai);
     target_roll = map(rx.trucY, 0, 1023, -danh_lai, danh_lai);
-    // Serial.print("truc X: ");
-    // Serial.println(rx.trucX);
     timeout_connected = millis();
-  }
 
-  if (millis() - timeout_connected > 1000)  // not connect about 2s
-  {
-    if (millis() - time_throttle > 400)  // 20ms
+
+    if (millis() - timeout_connected > 1000)  // not connect about 2s
     {
-      alt_hold = false;
-      if (throttle > 1250) {
+      if (millis() - time_throttle > 400)  // 20ms
+      {
+        alt_hold = false;
+        if (throttle > 1250) {
 
-        throttle = throttle - 10;
-        time_throttle = millis();
+          throttle = throttle - 10;
+          time_throttle = millis();
+        }
       }
     }
   }
 }
-
 void calculateAngle() {
   // ---- IMU ----
   sensors_event_t a, g, t;
@@ -586,10 +622,10 @@ void calculateRatePID() {
 }
 
 void mixer() {
-  int m1 = throttle - pid_p + pid_r - pid_yaw;
-  int m2 = throttle - pid_p - pid_r + pid_yaw;
-  int m3 = throttle + pid_p - pid_r - pid_yaw;
-  int m4 = throttle + pid_p + pid_r + pid_yaw;
+  int m1 = throttle - pid_p + pid_r - pid_yaw + pid_alt;
+  int m2 = throttle - pid_p - pid_r + pid_yaw + pid_alt;
+  int m3 = throttle + pid_p - pid_r - pid_yaw + pid_alt;
+  int m4 = throttle + pid_p + pid_r + pid_yaw + pid_alt;
   // int m1 = throttle - pid_p ;
   // int m2 = throttle - pid_p;
   // int m3 = throttle + pid_p;

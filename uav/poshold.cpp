@@ -21,222 +21,288 @@
 static TinyGPSPlus gps;
 static HardwareSerial SerialGPS(1);
 
-// ════════════════════════════════════════════════════════════
-//  GPS GLOBALS  (extern trong poshold.h)
-// ════════════════════════════════════════════════════════════
-float current_lat = 0.0f;
-float current_lon = 0.0f;
-float current_speed_ms = 0.0f;
-float gpsHeading = 0.0f;
-float hdop = 99.0f;
+uint8_t flight_mode;
+extern float yaw;
+int32_t gps_lat_rotating_mem[40], gps_lon_rotating_mem[40];
+float hdop = 10.0f, gpsHeading;
 uint8_t satellites = 0;
 
-float hold_lat = 0.0f;
-float hold_lon = 0.0f;
+int32_t lat_gps_actual, lon_gps_actual;
+int32_t lat_gps_previous, lon_gps_previous;
+int32_t l_lat_gps, l_lon_gps;
+int32_t l_lat_waypoint, l_lon_waypoint;
+uint8_t gps_add_counter = 0, new_gps_data_counter = 0;
+uint8_t new_gps_data_available;
+float lat_gps_loop_add = 0, lon_gps_loop_add = 0;
+uint8_t waypoint_set;
+int32_t gps_lat_error, gps_lon_error;
+int32_t gps_lat_error_previous, gps_lon_error_previous;
+float lat_gps_add = 0, lon_gps_add = 0;
+uint8_t gps_rotating_mem_location;
+float gps_adjust_east, gps_pitch_pid_adjust, gps_adjust_north, gps_roll_pid_adjust;
+int32_t gps_lat_total_avarage, gps_lon_total_avarage;
+uint8_t latitude_north, longitude_east;
 
-// ════════════════════════════════════════════════════════════
-//  EXTERN TỪ MAIN
-// ════════════════════════════════════════════════════════════
-extern float pitch, roll, yaw;  // độ
-extern float ax, ay, az;        // m/s² (raw từ MPU6050)
-extern float target_pitch, target_roll;
-extern float dt;  // dt main loop (giây)
+float gps_p_gain = 2.0, gps_d_gain = 0.02;
 
-// ════════════════════════════════════════════════════════════
-//  PID GAINS  (tune ở đây)
-// ════════════════════════════════════════════════════════════
-float kp_pos = 0.8f;     // vị trí → vận tốc mục tiêu
-float kp_vel_xy = 0.9f;  // vận tốc → góc nghiêng
-float ki_vel_xy = 0.01f;
-float kd_vel_xy = 0.05f;
-
-// ════════════════════════════════════════════════════════════
-//  INTERNAL STATE
-// ════════════════════════════════════════════════════════════
-static float i_vel_x = 0.0f, i_vel_y = 0.0f;
-static float last_err_vel_x = 0.0f, last_err_vel_y = 0.0f;
-static float dt_gps = 0.1f;
-static uint32_t last_gps_ms = 0;
-static bool gps_new_data = false;
-
-// ── Kalman 1D ────────────────────────────────────────────────
-// State: velocity (m/s) theo 1 trục
-// Predict @ 200 Hz bằng IMU accel
-// Update  @ 10 Hz  bằng GPS velocity (COG + speed)
-// ─────────────────────────────────────────────────────────────
-// Tune:
-//   KF_Q lớn → không tin IMU nhiều → output bám GPS hơn (lag hơn)
-//   KF_R lớn → không tin GPS nhiều → output mượt hơn nhưng chậm correct
-#define KF_Q 0.5f  // process noise (MPU6050 drift khá)
-#define KF_R 0.8f  // measurement noise (GPS COG không chính xác tốc độ thấp)
-
-typedef struct {
-  float v;
-  float P;
-} KF1D_t;
-static KF1D_t kf_vx = { 0.0f, 1.0f };  // North (m/s)
-static KF1D_t kf_vy = { 0.0f, 1.0f };  // East  (m/s)
-
-static void kf_predict(KF1D_t *kf, float accel, float _dt) {
-  kf->v += accel * _dt;  // tích phân gia tốc
-  kf->P += KF_Q * _dt;   // uncertainty tăng
-}
-
-static void kf_update(KF1D_t *kf, float gps_v) {
-  float K = kf->P / (kf->P + KF_R);
-  kf->v += K * (gps_v - kf->v);  // correct về GPS
-  kf->P *= (1.0f - K);
-  if (kf->P < 0.01f) kf->P = 0.01f;  // tránh P → 0
-}
-
-// ════════════════════════════════════════════════════════════
-//  ROTATE BODY ACCEL → NED  (chỉ trục ngang X,Y)
-// ════════════════════════════════════════════════════════════
-//  Input : ax_b, ay_b, az_b  [m/s²]  body frame (MPU6050 raw)
-//          pitch_deg, roll_deg        từ complementary filter
-//  Output: ax_north, ay_east [m/s²]  NED, gravity đã bị bù tự nhiên
-//
-//  Tại sao gravity tự bù?
-//    Khi level: az_b ≈ +9.81, pitch=roll=0 → ax_north ≈ 0  ✓
-//    Khi pitch 10° về Bắc: az_b vẫn ≈ 9.81 nhưng
-//      ax_north = cp*cr*ax_b + cp*sr*ay_b - sp*az_b
-//              ≈ -sin(10°)*9.81 ≈ -1.7 m/s²  ← gia tốc ngang thật về Bắc
-// ────────────────────────────────────────────────────────────
-static void rotateAccToNED(float ax_b, float ay_b, float az_b,
-                           float pitch_deg, float roll_deg,
-                           float *ax_north, float *ay_east) {
-  float p = pitch_deg * (3.14159f / 180.0f);
-  float r = roll_deg * (3.14159f / 180.0f);
-  float cp = cosf(p), sp = sinf(p);
-  float cr = cosf(r), sr = sinf(r);
-
-  *ax_north = cp * cr * ax_b + cp * sr * ay_b - sp * az_b;
-  *ay_east = cr * ay_b - sr * az_b;
-  // Lưu ý: gravity (az_b≈9.81 khi level) contribute:
-  //   ax_north += -sp * 9.81  → đúng với gia tốc ngang North khi pitch
-  //   ay_east  += -sr * 9.81  → đúng với gia tốc ngang East khi roll
-  // Không cần trừ thêm gravity riêng.
-}
-
-// ════════════════════════════════════════════════════════════
-//  PUBLIC API
-// ════════════════════════════════════════════════════════════
-
-void gpsSetup() {
-  SerialGPS.begin(115200, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
-}
-
-void readGPS() {
-  while (SerialGPS.available() > 0) {
-    char c = SerialGPS.read();
-    if (gps.encode(c)) {
-      if (gps.location.isValid() && gps.location.isUpdated()) {
-        current_lat = (float)gps.location.lat();
-        current_lon = (float)gps.location.lng();
-        current_speed_ms = gps.speed.mps();
-        satellites = gps.satellites.value();
-        hdop = gps.hdop.hdop();
-        gpsHeading = gps.course.deg();
-        // Serial.print("current_lat: ");
-        // Serial.println(current_lat);
-        poshold_update_gps();  // update Kalman ngay khi có fix
-      }
-    }
-  }
-}
 
 bool checkGPSQuality() {
   if (hdop > 2.0f) return false;     // HDOP cao = nhiễu nhiều
   if (satellites < 8) return false;  // ít vệ tinh = không tin
   return true;
 }
-
-// Gọi mỗi lần đọc IMU trong calculateAngle() — ~200 Hz
-void poshold_predict_imu() {
-  float ax_north, ay_east;
-  rotateAccToNED(ax, ay, az, pitch, roll, &ax_north, &ay_east);
-  kf_predict(&kf_vx, ax_north, dt);
-  kf_predict(&kf_vy, ay_east, dt);
+void gpsSetup() {
+  SerialGPS.begin(115200, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
 }
 
-// Gọi bên trong readGPS() khi có location fix mới — ~10 Hz
-void poshold_update_gps() {
-  uint32_t now = millis();
-  dt_gps = constrain((now - last_gps_ms) / 1000.0f, 0.05f, 0.3f);
-  last_gps_ms = now;
-  gps_new_data = true;
+void readGPS(void) {
+  if (gps_add_counter > 0) gps_add_counter--;
 
-  if (current_speed_ms >= 0.25f) {
-    // COG đáng tin khi đang di chuyển
-    float cog_rad = gpsHeading * (3.14159f / 180.0f);
-    kf_update(&kf_vx, current_speed_ms * cosf(cog_rad));  // North
-    kf_update(&kf_vy, current_speed_ms * sinf(cog_rad));  // East
-  } else {
-    // Gần đứng yên — kéo nhẹ về 0, COG không tin được
-    kf_update(&kf_vx, 0.0f);
-    kf_update(&kf_vy, 0.0f);
+  while (SerialGPS.available()) {
+    gps.encode(SerialGPS.read());
+  }
+
+  // Kiểm tra nếu có dữ liệu vị trí mới và hợp lệ
+  if (gps.location.isUpdated() && gps.location.isValid()) {
+
+    // Lấy tọa độ thực tế (nhân 10^7 để khớp với định dạng số nguyên của code gốc)
+    lat_gps_actual = (int32_t)(gps.location.lat() * 1000000);
+    lon_gps_actual = (int32_t)(gps.location.lng() * 1000000);
+    satellites = (uint8_t)gps.satellites.value();
+    hdop = (float)gps.hdop.hdop();
+    gpsHeading = (float)gps.course.deg();
+    latitude_north = (gps.location.rawLat().negative) ? 0 : 1;
+    longitude_east = (gps.location.rawLng().negative) ? 0 : 1;
+
+    // gps_debug();
+    if (hdop <= 1.5 && satellites >= 8) {
+      // --- LOGIC GIỮ VỊ TRÍ (GIỮ NGUYÊN TỪ CODE GỐC) ---
+      if (lat_gps_previous == 0 && lon_gps_previous == 0) {
+        lat_gps_previous = lat_gps_actual;
+        lon_gps_previous = lon_gps_actual;
+      }
+      // Tính toán bù suy diễn (Simulation) cho vòng lặp 250Hz
+      lat_gps_loop_add = (float)(lat_gps_actual - lat_gps_previous) / 13.0;
+      lon_gps_loop_add = (float)(lon_gps_actual - lon_gps_previous) / 13.0;
+
+      l_lat_gps = lat_gps_previous;
+      l_lon_gps = lon_gps_previous;
+
+      lat_gps_previous = lat_gps_actual;
+      lon_gps_previous = lon_gps_actual;
+
+      gps_add_counter = 2;        // can 10ms cho mỗi lần đọc data giả, mà loop là 4ms -> counter =2.5 -> chọn 2
+      new_gps_data_counter = 12;  // 100ms thì update gsp -> cần 13 dữ liệu để đọc mỗi 2 vòng loop: so lan lap gia
+      lat_gps_add = 0;            //Reset the lat_gps_add variable.
+      lon_gps_add = 0;
+      new_gps_data_available = 1;
+    }
+  }
+
+  //After 13 program loops 13 x 4ms ~ 100ms the gps_add_counter is 0.
+  if (gps_add_counter == 0 && new_gps_data_counter > 0) {  //If gps_add_counter is 0 and there are new GPS simulations needed.
+    // Serial.println(gps_add_counter);
+    new_gps_data_available = 2;  // data gia lap
+    new_gps_data_counter--;      //Decrement the new_gps_data_counter so there will only be 9 simulations
+    gps_add_counter = 2;         //Set the gps_add_counter variable to 5 as a count down loop timer
+
+    lat_gps_add += lat_gps_loop_add;    //Add the simulated part to a buffer float variable because the l_lat_gps can only hold integers.
+    if (abs(lat_gps_add) >= 1) {        //If the absolute value of lat_gps_add is larger then 1.
+      l_lat_gps += (int)lat_gps_add;    //Increment the lat_gps_add value with the lat_gps_add value as an integer. So no decimal part.
+      lat_gps_add -= (int)lat_gps_add;  //Subtract the lat_gps_add value as an integer so the decimal value remains.
+    }
+
+    lon_gps_add += lon_gps_loop_add;    //Add the simulated part to a buffer float variable because the l_lat_gps can only hold integers.
+    if (abs(lon_gps_add) >= 1) {        //If the absolute value of lat_gps_add is larger then 1.
+      l_lon_gps += (int)lon_gps_add;    //Increment the lat_gps_add value with the lat_gps_add value as an integer. So no decimal part.
+      lon_gps_add -= (int)lon_gps_add;  //Subtract the lat_gps_add value as an integer so the decimal value remains.
+    }
+  }
+
+
+  // --- TÍNH TOÁN PID GIỮ VỊ TRÍ ---
+  if (new_gps_data_available) {
+    new_gps_data_available = 0;
+    if (flight_mode >= 3 && waypoint_set == 0) {
+      Serial.println("Set waypoint");
+      waypoint_set = 1;
+      l_lat_waypoint = l_lat_gps;  // vi tri set point (target point)
+      l_lon_waypoint = l_lon_gps;
+    }
+
+    if (flight_mode >= 3 && waypoint_set == 1) {  // pos hold mode
+      // Tính toán sai số (Error)
+      gps_lat_error = l_lat_waypoint - l_lat_gps;
+      gps_lon_error = l_lon_waypoint - l_lon_gps;
+
+      gps_lat_total_avarage -= gps_lat_rotating_mem[gps_rotating_mem_location];                  //Subtract the current memory position to make room for the new value.
+      gps_lat_rotating_mem[gps_rotating_mem_location] = gps_lat_error - gps_lat_error_previous;  //Calculate the new change between the actual pressure and the previous measurement.
+      gps_lat_total_avarage += gps_lat_rotating_mem[gps_rotating_mem_location];                  //Add the new value to the long term avarage value.
+
+      gps_lon_total_avarage -= gps_lon_rotating_mem[gps_rotating_mem_location];                  //Subtract the current memory position to make room for the new value.
+      gps_lon_rotating_mem[gps_rotating_mem_location] = gps_lon_error - gps_lon_error_previous;  //Calculate the new change between the actual pressure and the previous measurement.
+      gps_lon_total_avarage += gps_lon_rotating_mem[gps_rotating_mem_location];                  //Add the new value to the long term avarage value.
+      gps_rotating_mem_location++;                                                               //Increase the rotating memory location.
+      if (gps_rotating_mem_location == 35) gps_rotating_mem_location = 0;                        //Start at 0 when the memory location 35 is reached.
+
+      gps_lat_error_previous = gps_lat_error;  //Remember the error for the next loop.
+      gps_lon_error_previous = gps_lon_error;
+
+      // Tính toán Pitch/Roll điều chỉnh theo hướng Bắc
+      gps_adjust_north = (float)gps_lat_error * gps_p_gain + (float)gps_lat_total_avarage * gps_d_gain;  // ap dung moving average filter cho Derivative
+      gps_adjust_east = (float)gps_lon_error * gps_p_gain + (float)gps_lon_total_avarage * gps_d_gain;
+
+      // Bù trừ theo bán cầu và xoay theo Yaw của máy bay (giữ nguyên logic source 293-300)
+      if (!latitude_north) gps_adjust_north *= -1;
+      if (!longitude_east) gps_adjust_east *= -1;
+
+      gps_roll_pid_adjust = (-1.0) * (((float)gps_adjust_north * cos(yaw * 0.017453)) + ((float)gps_adjust_east * sin(yaw * 0.017453)));
+      gps_pitch_pid_adjust = ((float)gps_adjust_east * cos(yaw * 0.017453)) - ((float)gps_adjust_north * sin(yaw * 0.017453));
+
+      // Giới hạn đầu ra PID
+      // gps_roll_pid_adjust = constrain(gps_roll_pid_adjust, -300, 300);
+      // gps_pitch_pid_adjust = constrain(gps_pitch_pid_adjust, -300, 300);
+
+      // Serial.print(gps_pitch_pid_adjust);
+      // Serial.print(',');
+      // Serial.println(gps_roll_pid_adjust);
+    }
+  }
+  if (flight_mode < 3 && waypoint_set > 0) {  //If the GPS hold mode is disabled and the waypoints are set.
+    gps_roll_pid_adjust = 0;                  //Reset the gps_roll_pid_adjust variable to disable the correction.
+    gps_pitch_pid_adjust = 0;                 //Reset the gps_pitch_pid_adjust variable to disable the correction.
+    if (waypoint_set == 1) {                  //If the waypoints are stored
+      gps_rotating_mem_location = 0;          //Set the gps_rotating_mem_location to zero so we can empty the
+      waypoint_set = 2;                       //Set the waypoint_set variable to 2 as an indication that the buffer is not cleared.
+    }
+    gps_lon_rotating_mem[gps_rotating_mem_location] = 0;  //Reset the current gps_lon_rotating_mem location.
+    gps_lat_rotating_mem[gps_rotating_mem_location] = 0;  //Reset the current gps_lon_rotating_mem location.
+    gps_rotating_mem_location++;                          //Increment the gps_rotating_mem_location variable for the next loop.
+    if (gps_rotating_mem_location == 36) {                //If the gps_rotating_mem_location equals 36, all the buffer locations are cleared.
+      waypoint_set = 0;                                   //Reset the waypoint_set variable to 0.
+      //Reset the variables that are used for the D-controller.
+      gps_lat_error_previous = 0;
+      gps_lon_error_previous = 0;
+      gps_lat_total_avarage = 0;
+      gps_lon_total_avarage = 0;
+      gps_rotating_mem_location = 0;
+    }
   }
 }
 
-// Gọi trong loop() — chỉ chạy khi có GPS fix mới
-void calculatePosHold() {
-  if (!gps_new_data) return;
-  if (!checkGPSQuality()) {
-    gps_new_data = false;
-    return;
-  }
-  gps_new_data = false;
-
-  // ── 1. Lỗi vị trí → mét (NED) ──────────────────────────
-  float dist_north = (hold_lat - current_lat) * 111320.0f;
-  float dist_east = (hold_lon - current_lon) * 111320.0f
-                    * cosf(current_lat * (3.14159f / 180.0f));
-
-  // ── 2. P vị trí → vận tốc mục tiêu ─────────────────────
-  float target_vx = constrain(kp_pos * dist_north, -2.0f, 2.0f);
-  float target_vy = constrain(kp_pos * dist_east, -2.0f, 2.0f);
-
-  // ── 3. Velocity thực từ Kalman (mượt @ 200 Hz) ──────────
-  float actual_vx = kf_vx.v;
-  float actual_vy = kf_vy.v;
-
-  // ── 4. PID vận tốc → góc nghiêng Earth frame ────────────
-  float err_vx = target_vx - actual_vx;
-  float err_vy = target_vy - actual_vy;
-
-  i_vel_x += err_vx * dt_gps;
-  i_vel_y += err_vy * dt_gps;
-  i_vel_x = constrain(i_vel_x, -10.0f, 10.0f);
-  i_vel_y = constrain(i_vel_y, -10.0f, 10.0f);
-
-  float d_vx = (err_vx - last_err_vel_x) / dt_gps;
-  float d_vy = (err_vy - last_err_vel_y) / dt_gps;
-  last_err_vel_x = err_vx;
-  last_err_vel_y = err_vy;
-
-  float tilt_north = kp_vel_xy * err_vx + ki_vel_xy * i_vel_x + kd_vel_xy * d_vx;
-  float tilt_east = kp_vel_xy * err_vy + ki_vel_xy * i_vel_y + kd_vel_xy * d_vy;
-  tilt_north = constrain(tilt_north, -15.0f, 15.0f);
-  tilt_east = constrain(tilt_east, -15.0f, 15.0f);
-
-  // ── 5. Rotate Earth → Body (dùng yaw la bàn) ────────────
-  float cy = cosf(yaw * (3.14159f / 180.0f));
-  float sy = sinf(yaw * (3.14159f / 180.0f));
-
-  // Thêm vào cuối calculatePosHold(), trước dòng target_pitch = ...
-  Serial.print("dist_N: ");
-  Serial.print(dist_north, 3);
-  Serial.print("  dist_E: ");
-  Serial.print(dist_east, 3);
-  Serial.print("  vx: ");
-  Serial.print(actual_vx, 3);
-  Serial.print("  vy: ");
-  Serial.print(actual_vy, 3);
-  Serial.print("  tilt_N: ");
-  Serial.print(tilt_north, 3);
-  Serial.print("  tilt_E: ");
-  Serial.println(tilt_east, 3);
-
-  target_pitch = -(tilt_north * cy + tilt_east * sy);
-  target_roll = (tilt_east * cy - tilt_north * sy);
+void gps_debug() {
+  Serial.print(lat_gps_actual);
+  Serial.print(',');
+  Serial.println(lon_gps_actual);
+  Serial.print(',');
+  Serial.print(latitude_north);
+  Serial.print(',');
+  Serial.println(longitude_east);
+  Serial.println(hdop);
+  Serial.println(satellites);
 }
+
+
+// #include "poshold.h"
+// #include "position_ekf.h"
+// #include <math.h>
+// #include <Arduino.h>
+
+// bool pos_hold_enable = false;
+
+// float hold_x = 0;
+// float hold_y = 0;
+
+// float target_pitch_gps = 0;
+// float target_roll_gps = 0;
+
+// // Position loop
+// float kp_pos = 0.30f;
+
+// // Velocity loop
+// float kp_vel = 3.0f;
+// float ki_vel = 0.4f;
+
+// float i_vel_x = 0;
+// float i_vel_y = 0;
+
+// void posHoldInit()
+// {
+//     hold_x = posEKF.x;
+//     hold_y = posEKF.y;
+
+//     i_vel_x = 0;
+//     i_vel_y = 0;
+// }
+
+// void posHoldUpdate(float dt)
+// {
+//     //--------------------------------------
+//     // position error
+//     //--------------------------------------
+
+//     float ex = hold_x - posEKF.x;
+//     float ey = hold_y - posEKF.y;
+
+//     //--------------------------------------
+//     // deadband chống GPS walk
+//     //--------------------------------------
+
+//     float dist = sqrt(ex*ex + ey*ey);
+
+//     if(dist < 1.5f)
+//     {
+//         ex = 0;
+//         ey = 0;
+//     }
+
+//     //--------------------------------------
+//     // desired velocity
+//     //--------------------------------------
+
+//     float vx_des = kp_pos * ex;
+//     float vy_des = kp_pos * ey;
+
+//     vx_des = constrain(vx_des,-1.0f,1.0f);
+//     vy_des = constrain(vy_des,-1.0f,1.0f);
+
+//     //--------------------------------------
+//     // velocity error
+//     //--------------------------------------
+
+//     float evx = vx_des - posEKF.vx;
+//     float evy = vy_des - posEKF.vy;
+
+//     //--------------------------------------
+//     // integrator
+//     //--------------------------------------
+
+//     i_vel_x += evx*dt;
+//     i_vel_y += evy*dt;
+
+//     i_vel_x = constrain(i_vel_x,-5,5);
+//     i_vel_y = constrain(i_vel_y,-5,5);
+
+//     //--------------------------------------
+//     // roll pitch command
+//     //--------------------------------------
+
+//     target_pitch_gps =
+//             kp_vel*evx
+//           + ki_vel*i_vel_x;
+
+//     target_roll_gps =
+//             kp_vel*evy
+//           + ki_vel*i_vel_y;
+
+//     //--------------------------------------
+//     // limit
+//     //--------------------------------------
+
+//     target_pitch_gps =
+//         constrain(target_pitch_gps,-10,10);
+
+//     target_roll_gps =
+//         constrain(target_roll_gps,-10,10);
+// }
+
