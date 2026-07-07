@@ -1,0 +1,5 @@
+../Core/Src/mtf01.c:18:6:micolink_check_sum	3
+../Core/Src/mtf01.c:33:6:micolink_parse_char	14
+../Core/Src/mtf01.c:87:6:MTF01_Init	1
+../Core/Src/mtf01.c:93:6:MTF01_Process	3
+../Core/Src/mtf01.c:103:9:MTF01_Update	7

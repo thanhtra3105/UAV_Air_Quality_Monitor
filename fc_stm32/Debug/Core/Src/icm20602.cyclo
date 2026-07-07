@@ -1,0 +1,6 @@
+../Core/Src/icm20602.c:10:16:ICM_SPI_RW	1
+../Core/Src/icm20602.c:19:9:ICM20602_ReadReg	1
+../Core/Src/icm20602.c:36:6:ICM20602_WriteReg	1
+../Core/Src/icm20602.c:50:6:ICM20602_ReadRegs	1
+../Core/Src/icm20602.c:72:6:ICM20602_Read	1
+../Core/Src/icm20602.c:107:6:ICM20602_Init	1

@@ -1,0 +1,2 @@
+../Core/Src/serial.c:12:6:Serial_Init	16	static
+../Core/Src/serial.c:20:6:Serial_printf	156	static
