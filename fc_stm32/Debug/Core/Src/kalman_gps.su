@@ -1,0 +1,3 @@
+../Core/Src/kalman_gps.c:11:6:KalmanGPSAxis_Init	24	static
+../Core/Src/kalman_gps.c:29:6:KalmanGPSAxis_Predict	200	static
+../Core/Src/kalman_gps.c:90:6:KalmanGPSAxis_UpdatePos	96	static

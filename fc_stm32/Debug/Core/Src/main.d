@@ -36,7 +36,9 @@ Core/Src/main.o: ../Core/Src/main.c ../Core/Inc/main.h \
  ../Core/Inc/qmc5883.h ../Core/Inc/kalman.h ../Core/Inc/dwt.h \
  ../Core/Inc/pid_controller.h ../Core/Inc/types.h ../Core/Src/uart_cmd.h \
  ../Core/Inc/mtf01.h ../Core/Inc/tof.h ../Core/Inc/gps.h \
- ../Core/Inc/main.h ../Core/Inc/pos_hold.h
+ ../Core/Inc/main.h ../Core/Inc/pos_hold.h ../Core/Inc/ina219.h \
+ ../Core/Inc/dsp310.h ../Core/Inc/ist8310.h ../Core/Inc/kalman_position.h \
+ ../Core/Inc/kalman_gps.h
 ../Core/Inc/main.h:
 ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal.h:
 ../Core/Inc/stm32h5xx_hal_conf.h:
@@ -85,3 +87,8 @@ Core/Src/main.o: ../Core/Src/main.c ../Core/Inc/main.h \
 ../Core/Inc/gps.h:
 ../Core/Inc/main.h:
 ../Core/Inc/pos_hold.h:
+../Core/Inc/ina219.h:
+../Core/Inc/dsp310.h:
+../Core/Inc/ist8310.h:
+../Core/Inc/kalman_position.h:
+../Core/Inc/kalman_gps.h:

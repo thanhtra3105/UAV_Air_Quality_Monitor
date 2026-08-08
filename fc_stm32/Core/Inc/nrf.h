@@ -117,5 +117,9 @@ void NRF24_FlushRX(void);
 
 void NRF24_FlushTX(void);
 
+void NRF24_OpenWritingPipe(uint8_t *addr);
+uint8_t NRF24_Write(uint8_t *buf, uint8_t len);
+
+void NRF24_WriteAckPayload(uint8_t pipe, uint8_t *buf, uint8_t len);
 #endif
 

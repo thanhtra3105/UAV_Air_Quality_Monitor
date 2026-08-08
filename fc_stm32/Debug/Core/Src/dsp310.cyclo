@@ -1,0 +1,6 @@
+../Core/Src/dsp310.c:18:13:DSP310_WriteReg	1
+../Core/Src/dsp310.c:22:16:DSP310_ReadReg	1
+../Core/Src/dsp310.c:28:16:DSP310_CalibCoefficient	11
+../Core/Src/dsp310.c:69:9:DSP310_Init	6
+../Core/Src/dsp310.c:110:6:DSP310_ReadData	4
+../Core/Src/dsp310.c:148:9:DSP310_Read	5

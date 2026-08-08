@@ -6,4 +6,12 @@
 ../Core/Src/kalman.c:115:6:KalmanAxis_Init	16	static
 ../Core/Src/kalman.c:123:6:KalmanAxis_Predict	56	static
 ../Core/Src/kalman.c:146:6:KalmanAxis_UpdateVel	56	static
-../Core/Src/kalman.c:171:6:KalmanAxis_Compute	32	static
+../Core/Src/kalman.c:171:6:KalmanAxis_UpdatePos	56	static
+../Core/Src/kalman.c:198:6:KalmanAxis_Compute	32	static
+../Core/Src/kalman.c:212:6:Kalman3D_Init	24	static
+../Core/Src/kalman.c:221:6:Kalman3D_Predict	96	static
+../Core/Src/kalman.c:250:6:Kalman3D_Update	88	static
+../Core/Src/kalman.c:278:6:Kalman4D_Init	24	static
+../Core/Src/kalman.c:294:6:Kalman4D_Predict	280	static
+../Core/Src/kalman.c:349:6:Kalman4D_Update	256	static
+../Core/Src/kalman.c:399:6:Kalman4D_Compute	32	static

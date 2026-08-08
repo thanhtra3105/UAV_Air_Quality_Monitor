@@ -13,6 +13,12 @@ static float constrainFloat(float value, float min, float max)
     return value;
 }
 
+void PID_SetIntegralLimits(PIDController_t *pid, float iMin, float iMax)
+{
+    pid->iMin = iMin;
+    pid->iMax = iMax;
+}
+
 void PID_Init(PIDController_t *pid,
               float kp,
               float ki,

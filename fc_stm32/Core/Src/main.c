@@ -57,6 +57,11 @@
 #include "tof.h"
 #include "gps.h"
 #include "pos_hold.h"
+#include "ina219.h"
+#include "dsp310.h"
+#include "ist8310.h"
+#include "kalman_position.h"
+#include "kalman_gps.h"
 
 /* USER CODE END Includes */
 
@@ -67,7 +72,8 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+//#define USE_QMC5883
+#define USE_IST8310
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -90,6 +96,7 @@ UART_HandleTypeDef huart4;
 UART_HandleTypeDef huart7;
 UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
+DMA_HandleTypeDef handle_GPDMA1_Channel0;
 
 /* USER CODE BEGIN PV */
 
@@ -98,6 +105,7 @@ UART_HandleTypeDef huart2;
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
+static void MX_GPDMA1_Init(void);
 static void MX_TIM3_Init(void);
 static void MX_I2C1_Init(void);
 static void MX_I2C2_Init(void);
@@ -107,8 +115,8 @@ static void MX_USART1_UART_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_ICACHE_Init(void);
 static void MX_UART7_Init(void);
-static void MX_SPI2_Init(void);
 static void MX_TIM6_Init(void);
+static void MX_SPI2_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -122,7 +130,7 @@ uint8_t address[5] = { '0', '0', '0', '0', '1' };
 
 /* THÊM ĐOẠN NÀY LÊN PHÍA TRÊN MAIN HOẶC VÀO USER CODE BEGIN */
 #pragma pack(push, 1)
-struct ControlData {
+typedef struct {
 	uint16_t trucX;
 	uint16_t trucY;
 	uint8_t trai;
@@ -132,14 +140,28 @@ struct ControlData {
 	uint8_t batquathut;
 	uint8_t nut1;
 	uint8_t nut2;
-	uint8_t chinhtocdoquat;
+	uint16_t chinhtocdoquat;
 	uint8_t has_wp;
 	int32_t wp_lat;
 	int32_t wp_lon;
-};
+} ControlData;
+
+// Struct gửi Telemetry về tay cầm (Giống hệt Arduino)
+typedef struct {
+	int32_t lat;
+	int32_t lon;
+	float x;
+	float y;
+	float alt;
+	float target_x;
+	float target_y;
+	float battery;
+} TelemetryData;
+
 #pragma pack(pop)
 
-struct ControlData rxData;
+ControlData rxData;
+TelemetryData txData;
 QMC5883_t mag;
 ICM20602_t imu;
 GPS_Data_t gps;
@@ -147,6 +169,15 @@ Kalman2D_t kf;
 MTF01_t mtf_data;
 KalmanAxis_t kf_x;
 KalmanAxis_t kf_y;
+KalmanAxis_t kf_x_gps;
+KalmanAxis_t kf_y_gps;
+DSP310_t dsp_sensor;
+Kalman4D_t kf_4d;
+IST8310_Data_t ist8310;
+KalmanPos_t kf_pos_x;
+KalmanPos_t kf_pos_y;
+KalmanGPSAxis_t kf_x_gps_3d;
+KalmanGPSAxis_t kf_y_gps_3d;
 
 float dt;
 float gx, gy, gz;
@@ -170,18 +201,24 @@ PIDController_t PID_Alt_Vel;   // inner: velocity -> throttle offset
 // ===== PID ANGLE =====
 float kp_angle = 6.5, ki_angle = 0, kd_angle = 0;
 // ===== PID RATE =====
-float kp_r = 0.85, ki_r = 0.000, kd_r = 0.003;
-float kp_p = 0.85, ki_p = 0.000, kd_p = 0.003;
-float kp_y = 0.85, ki_y = 0.000, kd_y = 0.003;
+float kp_r = 0.85, ki_r = 1.0, kd_r = 0.003;
+float kp_p = 0.85, ki_p = 1.0, kd_p = 0.003;
+float kp_y = 0.85, ki_y = 0.0, kd_y = 0.003;
 // ===== PID ALTITUDE ====
-float kp_alt_pos = 4.0, ki_alt_pos = 0.0f, kd_alt_pos = 0.0f;
+//float kp_alt_pos = 4.0, ki_alt_pos = 0.0f, kd_alt_pos = 0.0f;		// Use MTF01 TOF
+//float kp_alt_vel = 0.8, ki_alt_vel = 0.0f, kd_alt_vel = 0.003f;
+float kp_alt_pos = 1.0, ki_alt_pos = 0.0f, kd_alt_pos = 0.0f;	// Use DSP310
 float kp_alt_vel = 0.8, ki_alt_vel = 0.0f, kd_alt_vel = 0.003f;
 // ===== PID POSITION HOLD ====
-float kp_xy_pos = 1.2f, ki_xy_pos = 0.0f, kd_xy_pos = 0.0f; // Chậm rãi, mượt mà tính ra vận tốc
-float kp_xy_vel = 6.0f, ki_xy_vel = 0.1f, kd_xy_vel = 0.05f; // Nghiêng dứt khoát để đạt được vận tốc đó
+/*==== MTF01 ====*/
+//float kp_xy_pos = 1.2f, ki_xy_pos = 0.0f, kd_xy_pos = 0.0f; //
+//float kp_xy_vel = 6.0f, ki_xy_vel = 0.1f, kd_xy_vel = 0.05f; //
+/*===== GPS ====*/
+float kp_xy_pos = 0.8f, ki_xy_pos = 0.0f, kd_xy_pos = 0.0f; //
+float kp_xy_vel = 2.0f, ki_xy_vel = 0.1f, kd_xy_vel = 0.1f; //
 
 // ===== TARGET ROLL/PITCH MAX/MIN =======
-const float MAX_TARGET_ROLL_PITCH = 6.0;
+const float MAX_TARGET_ROLL_PITCH = 8.0;
 
 // ================= MOTOR =================
 int throttle = 1000;
@@ -209,6 +246,9 @@ float target_vz = 0.0f;
 uint8_t mtf01_updated = 0;	// flag mtf updated
 const float MAX_TARGET_VZ = 80.0f;
 const float MAX_ALT_OUTPUT = 200.0f;
+
+// ===== DSP310 ======
+float alt_offset = 0;
 
 // ================= OUTPUT PID =================
 float pid_p, pid_r, pid_y;
@@ -274,13 +314,27 @@ float target_vy = 0.0f;
 
 uint8_t pos_hold_active = 0; // Cờ trạng thái
 
+uint8_t status = 0;
+float ist_heading = 0.0f;
+
+// === BIẾN CHO GPS POSITION HOLD ===
+double home_lat = 0.0f;
+double home_lon = 0.0f;
+float gps_x = 0.0f, gps_y = 0.0f;
+float last_gps_x = 0.0f, last_gps_y = 0.0f;
+float gps_vx = 0.0f, gps_vy = 0.0f;
+uint8_t gps_hold_active = 0;
+uint8_t gps_home_set = 0;
+
+static float acc_z_filt = 0.0f;
+
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
-	if (huart->Instance == USART1) {
-		UART_CMD_Process(&huart1);
+	if (huart->Instance == UART7) {
+		UART_CMD_Process(&huart7);
+//		GPS_UART_RxCallback(&huart1);
 	}
 
 	if (huart->Instance == USART2) {
-//		MTF01_UARTCallback(&mtf01_handle);
 		MTF01_Process(&huart2);
 	}
 
@@ -300,6 +354,12 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 //		// Vẫn phải mồi lại ngắt (dù có lưu vào mảng hay không) để tránh ORE
 //		HAL_UART_Receive_IT(&huart1, &rx_byte, 1);
 //	}
+}
+
+// Hàm Callback mặc định của HAL cho sự kiện Receive To IDLE
+void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size) {
+	// Đẩy sự kiện sang cho hàm xử lý của ta bên file gps.c
+	GPS_UART_RxEventCallback(huart, Size);
 }
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
@@ -330,7 +390,7 @@ void Failsafe_Task(void) {
 
 		if (HAL_GetTick() - time_throttle > 400) {
 			if (throttle > 1200) {
-				throttle -= 10;
+				throttle -= 5;
 				time_throttle = HAL_GetTick();
 			} else {
 				if (mtf_data.distance < 200)	// <20cm
@@ -340,22 +400,33 @@ void Failsafe_Task(void) {
 	}
 }
 
+float target_pitch_body = 0.0f, target_roll_body = 0.0f;
 void RxController() {
 	if (NRF24_Available()) {
 		uint8_t len = NRF24_GetDynamicPayloadSize();
 
-		if (len == sizeof(struct ControlData)) {
+		if (len == sizeof(ControlData)) {
 			NRF24_Read((uint8_t*) &rxData, len);
-			throttle = map((long) rxData.chinhtocdoquat, 0, 100, 1000, 1800);
-			target_roll = (float) map(rxData.trucX, 0, 1023,
+			throttle = rxData.chinhtocdoquat;
+			target_roll = (float) map(rxData.trucX, 0, 100,
 					(long) MAX_TARGET_ROLL_PITCH,
 					(long) -MAX_TARGET_ROLL_PITCH);
-			target_pitch = (float) map(rxData.trucY, 0, 1023,
+			target_pitch = (float) map(rxData.trucY, 0, 100,
 					(long) MAX_TARGET_ROLL_PITCH,
 					(long) -MAX_TARGET_ROLL_PITCH);
 			alt_hold = rxData.nut1;
 			timeout_connected = HAL_GetTick();
 		}
+		txData.lat = (int32_t) (gps.latitude * 1e7);
+		txData.lon = (int32_t) (gps.longitude * 1e7);
+		txData.x = est_x;
+		txData.y = est_y;
+//		txData.alt = current_alt;
+		txData.alt = yaw;
+//		txData.target_x = target_roll_body;
+//		txData.target_y = target_pitch_body;
+		NRF24_WriteAckPayload(0, &txData, sizeof(TelemetryData));
+
 	} else {
 		Failsafe_Task();
 	}
@@ -386,10 +457,10 @@ void Estimate_Position_Kalman(float dt) {
 	float cr = cosf(roll * DEG_TO_RAD);
 	float sr = sinf(roll * DEG_TO_RAD);
 
-	float ax_earth = cy * cp * ax + (cy * sp * sr - sy * cr) * ay
+	ax_earth = cy * cp * ax + (cy * sp * sr - sy * cr) * ay
 			+ (cy * sp * cr + sy * sr) * az;
 
-	float ay_earth = sy * cp * ax + (sy * sp * sr + cy * cr) * ay
+	ay_earth = sy * cp * ax + (sy * sp * sr + cy * cr) * ay
 			+ (sy * sp * cr - cy * sr) * az;
 
 	ax_earth *= 9.81f;
@@ -442,34 +513,48 @@ void Estimate_Position_Kalman(float dt) {
 	est_y = kf_y.pos;
 	est_vy = kf_y.vel;
 }
-
-float readHeading(float roll_deg, float pitch_deg) {
-	QMC5883_Read(&hi2c2, &mag);
-
+static float computeHeading(float bx, float by, float bz, float roll_deg,
+		float pitch_deg) {
 	float roll_rad = roll_deg * DEG_TO_RAD;
 	float pitch_rad = pitch_deg * DEG_TO_RAD;
+	float cr = cosf(roll_rad), sr = sinf(roll_rad);
+	float cp = cosf(pitch_rad), sp = sinf(pitch_rad);
 
-	float cr = cosf(roll_rad);
-	float sr = sinf(roll_rad);
-	float cp = cosf(pitch_rad);
-	float sp = sinf(pitch_rad);
+	float mx = bx * cp + by * sr * sp + bz * cr * sp;
+	float my = by * cr - bz * sr;
 
-	// Tilt Compensation
-	float mx = mag.x * cp + mag.z * sp;
-	float my = mag.x * sr * sp + mag.y * cr - mag.z * sr * cp;
-
-	float heading = atan2f(my, mx) * RAD_TO_DEG;
-
-	// Chuẩn hóa về [-180,180]
+	float heading = atan2f(my, mx) * RAD_TO_DEG; /* atan2f trả về sẵn trong [-180,180] */
 	if (heading > 180.0f)
 		heading -= 360.0f;
 	if (heading < -180.0f)
 		heading += 360.0f;
-
 	return heading;
 }
 
-void calculateAngle(float dt) {
+float readHeading(float roll_deg, float pitch_deg) {
+#ifdef USE_QMC5883
+	QMC5883_Read(&hi2c2, &mag);
+	return computeHeading(mag.x, mag.y, mag.z, roll_deg, pitch_deg);
+
+#else   /* IST8310 */
+	static float last_heading = 0.0f;
+
+	if (IST8310_Read(&hi2c2, &ist8310) == IST8310_OK) {
+		last_heading = computeHeading(ist8310.raw_y, -ist8310.raw_x,
+				-ist8310.raw_z, roll_deg, pitch_deg);
+	}
+	return last_heading;
+
+#endif
+}
+
+float readAltitude(float pressure_hPa)		// pressure unit hPa
+{
+	float h = 44330 * (1 - pow((pressure_hPa / 1013.25), (1 / 5.255)));
+	return h;	// met
+}
+
+void calculateAngle(float dt) {		// 500Hz
 
 	float roll_acc = atan2(ay, sqrt(ax * ax + az * az)) * 57.2958;
 	float pitch_acc = atan2(-ax, sqrt(ay * ay + az * az)) * 57.2958;
@@ -483,7 +568,6 @@ void calculateAngle(float dt) {
 	KalmanUncertaintyAnglePitch = Kalman1DOutput[1];
 
 	//---------------- Yaw ----------------- //
-
 	// 1. Predict bằng gyro
 	yaw += gz * dt;
 	if (yaw > 180.0f)
@@ -510,32 +594,41 @@ void calculateAngle(float dt) {
 	if (yaw < -180.0f)
 		yaw += 360.0f;
 
-	/* ============ALTITUDE HOLD===========*/
+	/* ============ALTITUDE HOLD - INNER (Velocity, 500Hz) ===========*/
 	float acc_z_inertial = -sin(pitch * DEG_TO_RAD) * ax
 			+ cos(pitch * DEG_TO_RAD) * sin(roll * DEG_TO_RAD) * ay
 			+ cos(pitch * DEG_TO_RAD) * cos(roll * DEG_TO_RAD) * az;
-	acc_z_inertial = (acc_z_inertial - 1) * 981.0f;  // cm/s2
-// ===== LPF cho acc_z_inertial =====
-	static float acc_z_filt = 0.0f;
-	static bool acc_z_filt_init = false;
-	const float LPF_ALPHA = 0.2f;   // 0..1, càng nhỏ càng mượt nhưng càng trễ
+	acc_z_inertial = (acc_z_inertial - 1) * 981.0f;
 
+//	static float acc_z_filt = 0.0f;
+	static bool acc_z_filt_init = false;
+	const float LPF_ALPHA = 0.2f;
 	if (!acc_z_filt_init) {
-		acc_z_filt = acc_z_inertial; // tránh trễ khởi động (transient) lúc mới bật
+		acc_z_filt = acc_z_inertial;
 		acc_z_filt_init = true;
 	} else {
 		acc_z_filt = LPF_ALPHA * acc_z_inertial
 				+ (1.0f - LPF_ALPHA) * acc_z_filt;
 	}
-	static float tof_cm = 0;
-	if (mtf01_updated) {
-		tof_cm = mtf_data.distance * 0.1f;
-		tof_cm = tof_cm * cosf(roll * DEG_TO_RAD) * cosf(pitch * DEG_TO_RAD);
-		current_alt = tof_cm;
-		Kalman2D_Update(&kf, current_alt, 1.0f);
-		mtf01_updated = 0; // update done
-	}
 
+//	Kalman2D_Predict(&kf, acc_z_filt, dt); // <-- dùng dt_rate (2ms), không phải dt_angle
+//	static float tof_cm = 0;
+//	if (mtf01_updated) {
+//		tof_cm = mtf_data.distance * 0.1f;
+//		tof_cm = tof_cm * cosf(roll * DEG_TO_RAD) * cosf(pitch * DEG_TO_RAD);
+//		current_alt = tof_cm;
+//		Kalman2D_Update(&kf, current_alt, 1.0f);
+//		mtf01_updated = 0; // update done
+//	}
+
+	Kalman4D_Predict(&kf_4d, acc_z_filt, dt);
+	static float dsp310_alt_cm = 0;
+
+	if (DSP310_Read(&dsp_sensor)) {
+		dsp310_alt_cm = (dsp_sensor.altitude - alt_offset) * 100;
+		current_alt = dsp310_alt_cm;
+		Kalman4D_Update(&kf_4d, current_alt, 5.0f);
+	}
 }
 
 void Estimate_Position(float dt) {
@@ -630,26 +723,57 @@ void positionHold(float dt) {
 
 		target_vx = constrain(target_vx, -MAX_TARGET_VEL_XY, MAX_TARGET_VEL_XY);
 		target_vy = constrain(target_vy, -MAX_TARGET_VEL_XY, MAX_TARGET_VEL_XY);
+//		// ==== VELOCITY X,Y LOOP=====
+//		float err_vx = target_vx - est_vx;
+//		float err_vy = target_vy - est_vy;
+//
+//		// Góc nghiêng cần thiết trên hệ tọa độ Trái Đất
+//		float out_angle_earth_x = PID_Calculate(&PID_Vel_X, err_vx, dt);
+//		float out_angle_earth_y = PID_Calculate(&PID_Vel_Y, err_vy, dt);
+//
+//		// VÒNG 3: ROTATION
+//		float cy = cosf(yaw * DEG_TO_RAD);
+//		float sy = sinf(yaw * DEG_TO_RAD);
+//		float target_pitch_body = out_angle_earth_x * cy
+//				+ out_angle_earth_y * sy;
+//		float target_roll_body = -out_angle_earth_x * sy
+//				+ out_angle_earth_y * cy;
+//		// Giới hạn góc nghiêng tối đa khi giữ vị trí (VD: 15 độ)
+//		target_pitch_body = constrain(target_pitch_body, -15.0f, 15.0f);
+//		target_roll_body = constrain(target_roll_body, -15.0f, 15.0f);
+//
+//		target_pitch = -target_pitch_body; // Âm ngóc, dương chúi (Tùy cấu hình hàm cân bằng của bạn)
+//		target_roll = target_roll_body;
+
 		// ==== VELOCITY X,Y LOOP=====
 		float err_vx = target_vx - est_vx;
 		float err_vy = target_vy - est_vy;
 
-		// Góc nghiêng cần thiết trên hệ tọa độ Trái Đất
+		// 1. Góc nghiêng (hoặc Lực đẩy) cần thiết trên hệ tọa độ Trái Đất
 		float out_angle_earth_x = PID_Calculate(&PID_Vel_X, err_vx, dt);
 		float out_angle_earth_y = PID_Calculate(&PID_Vel_Y, err_vy, dt);
 
-		// VÒNG 3: ROTATION
+		// 2. ĐẢO DẤU TẠI ĐÂY NẾU TRỤC BỊ NGƯỢC CHIỀU
+		// Chuyển dấu trừ từ target_pitch lên đây!
+		out_angle_earth_x = -out_angle_earth_x;
+
+		// (Ghi chú: Nếu Roll của bạn cũng bị ngược thì thêm dấu trừ vào dòng dưới)
+		// out_angle_earth_y = -out_angle_earth_y;
+
+		// 3. VÒNG ROTATION (Xoay từ Earth -> Body)
 		float cy = cosf(yaw * DEG_TO_RAD);
 		float sy = sinf(yaw * DEG_TO_RAD);
-		float target_pitch_body = out_angle_earth_x * cy
-				+ out_angle_earth_y * sy;
-		float target_roll_body = -out_angle_earth_x * sy
-				+ out_angle_earth_y * cy;
-		// Giới hạn góc nghiêng tối đa khi giữ vị trí (VD: 15 độ)
+
+		// Hàm xoay toán học nguyên bản, tuyệt đối không chèn thêm dấu ở đây
+		target_pitch_body = out_angle_earth_x * cy + out_angle_earth_y * sy;
+		target_roll_body = -out_angle_earth_x * sy + out_angle_earth_y * cy;
+
+		// 4. Giới hạn góc nghiêng tối đa
 		target_pitch_body = constrain(target_pitch_body, -15.0f, 15.0f);
 		target_roll_body = constrain(target_roll_body, -15.0f, 15.0f);
 
-		target_pitch = target_pitch_body; // Âm ngóc, dương chúi (Tùy cấu hình hàm cân bằng của bạn)
+		// 5. GÁN TRỰC TIẾP, KHÔNG CÒN DẤU TRỪ NÀO NỮA
+		target_pitch = target_pitch_body;
 		target_roll = target_roll_body;
 	} else {
 		// Tắt Pos Hold
@@ -660,17 +784,150 @@ void positionHold(float dt) {
 	}
 }
 
+#define GPS_POS_R      2.5f
+#define KI_GPS_BIAS    0.02f   // hệ số học bias — BẮT ĐẦU NHỎ, tune tăng dần
+#define MAX_ACCEL_BIAS 1.0f    // m/s^2, chặn để tránh runaway khi GPS jump/nhiễu
+
+void Estimate_Position_GPS_Kalman(float dt) {
+	/*=============================
+	 1. Xoay gia tốc từ Body -> Earth Frame
+	 =============================*/
+	float cy = cosf(yaw * DEG_TO_RAD);
+	float sy = sinf(yaw * DEG_TO_RAD);
+	float cp = cosf(pitch * DEG_TO_RAD);
+	float sp = sinf(pitch * DEG_TO_RAD);
+	float cr = cosf(roll * DEG_TO_RAD);
+	float sr = sinf(roll * DEG_TO_RAD);
+
+	ax_earth = cy * cp * ax + (cy * sp * sr - sy * cr) * ay
+			+ (cy * sp * cr + sy * sr) * az;
+
+	ay_earth = sy * cp * ax + (sy * sp * sr + cy * cr) * ay
+			+ (sy * sp * cr - cy * sr) * az;
+
+	ax_earth *= 9.81f;
+	ay_earth *= 9.81f;
+
+	/*=============================
+	 2. Kalman PREDICT (Chạy 500Hz bằng IMU)
+	 =============================*/
+	KalmanGPSAxis_Predict(&kf_x_gps_3d, ax_earth, dt);
+	KalmanGPSAxis_Predict(&kf_y_gps_3d, ay_earth, dt);
+
+	/*=============================
+	 3. Kalman UPDATE (Chạy ~10Hz bằng GPS)
+	 =============================*/
+
+	if (gps.fix_quality > 0 && gps.ready == 1) {
+		if (!gps_home_set) {
+			home_lat = gps.latitude;
+			home_lon = gps.longitude;
+			gps_home_set = 1;
+
+			// Reset trạng thái
+			kf_x_gps_3d.pos = 0.0f;
+			kf_x_gps_3d.vel = 0.0f;
+			kf_x_gps_3d.bias = 0.0f;
+			kf_y_gps_3d.pos = 0.0f;
+			kf_y_gps_3d.vel = 0.0f;
+			kf_y_gps_3d.bias = 0.0f;
+		} else {
+			float lat_err = gps.latitude - home_lat;
+			float lon_err = gps.longitude - home_lon;
+
+			float new_gps_x = lat_err * 111320.0f;
+			float new_gps_y = lon_err * 111320.0f * cosf(home_lat * DEG_TO_RAD);
+
+			// Tính độ lệch xem có phải nhiễu (outlier) không
+			float diff_x = new_gps_x - est_x;
+			float diff_y = new_gps_y - est_y;
+
+			if (sqrtf(diff_x * diff_x + diff_y * diff_y) < 5.0f) {
+				gps_x = new_gps_x;
+				gps_y = new_gps_y;
+
+				KalmanGPSAxis_UpdatePos(&kf_x_gps_3d, gps_x, 1.0f);
+				KalmanGPSAxis_UpdatePos(&kf_y_gps_3d, gps_y, 1.0f);
+			} else {
+				// Bỏ qua giá trị GPS bị lỗi
+			}
+		}
+		gps.ready = 0;
+	}
+
+	// 4. Gán State cho hàm PID Position Hold
+	est_x = kf_x_gps_3d.pos;
+	est_vx = kf_x_gps_3d.vel;
+	est_y = kf_y_gps_3d.pos;
+	est_vy = kf_y_gps_3d.vel;
+}
+
+float err_x, err_y;
+void GPS_PositionHold(float dt) {		// PID
+	uint8_t gps_hold_sw = rxData.nut2;
+
+	// Yêu cầu phải bật công tắc, có sóng GPS và đã chốt Home
+	if (rxData.nut1 && gps_hold_sw && gps_home_set) {
+
+		if (!pos_hold_active) {
+			target_x = est_x; // Khóa vị trí hiện tại của Kalman
+			target_y = est_y;
+			PID_Reset(&PID_Pos_X);
+			PID_Reset(&PID_Pos_Y);
+			PID_Reset(&PID_Vel_X);
+			PID_Reset(&PID_Vel_Y);
+			pos_hold_active = 1;
+		}
+
+		// ==== VELOCITY X,Y LOOP=====
+		float err_vx = target_vx - est_vx;
+		float err_vy = target_vy - est_vy;
+
+		// 1. Tính toán lực đẩy cần thiết trên hệ tọa độ Trái Đất (X=North, Y=East)
+		float out_angle_earth_x = PID_Calculate(&PID_Vel_X, err_vx, dt);
+		float out_angle_earth_y = PID_Calculate(&PID_Vel_Y, err_vy, dt);
+
+		// 2. VÒNG ROTATION (Xoay từ Earth -> Body)
+		float cy = cosf(yaw * DEG_TO_RAD);
+		float sy = sinf(yaw * DEG_TO_RAD);
+
+		// Phân tách lực Earth thành lực kéo trên hệ Body (Front và Right)
+		// Tuyệt đối không tự ý thêm dấu trừ vào các công thức lượng giác này
+		float force_body_x = out_angle_earth_x * cy + out_angle_earth_y * sy;
+		float force_body_y = -out_angle_earth_x * sy + out_angle_earth_y * cy;
+
+		// 3. Giới hạn góc nghiêng/lực tối đa
+		force_body_x = constrain(force_body_x, -10.0f, 10.0f);
+		force_body_y = constrain(force_body_y, -10.0f, 10.0f);
+
+		// 4. MAPPING TRỰC TIẾP LÊN TRỤC CỦA DRONE (Gắn dấu)
+		// Theo hệ thống của bạn: Tiến = Pitch âm, Phải = Roll dương
+		target_pitch = force_body_x;
+		target_roll = force_body_y;
+		txData.target_x = target_roll;
+		txData.target_y = target_pitch;
+	} else {
+		if (pos_hold_active) {
+			pos_hold_active = 0;
+			gps_home_set = 0;
+			// Bỏ PosHold, phi công giành lại quyền điều khiển stick
+			// Để an toàn, có thể reset gps_home_set = 0 khi tắt
+		}
+	}
+}
+
 void calculatePIDAngle(float dt_angle) {
 	/* ============ALTITUDE HOLD - CASCADE===========*/
 	if (alt_hold && !alt_init) {
 		alt_init = true;
-		target_alt = kf.altitude;      // chốt độ cao hiện tại làm setpoint
+//		target_alt = kf.altitude;      // chốt độ cao hiện tại làm setpoint
+		target_alt = kf_4d.altitude;
 		PID_Reset(&PID_Alt_Pos);
 		PID_Reset(&PID_Alt_Vel);
 	}
 
 	if (alt_hold) {
-		float alt_err = target_alt - kf.altitude;
+		float alt_err = target_alt - kf_4d.altitude;
 		target_vz = PID_Calculate(&PID_Alt_Pos, alt_err, dt_angle);
 		target_vz = constrain(target_vz, -MAX_TARGET_VZ, MAX_TARGET_VZ);
 	} else {
@@ -680,7 +937,8 @@ void calculatePIDAngle(float dt_angle) {
 	}
 
 	//	========== OPTICAL FLOW MTF01 POS HOLD =============
-	positionHold(dt_angle);
+//	positionHold(dt_angle);
+	GPS_PositionHold(dt_angle);
 
 	//  ================= PID ANGLE =================
 	float pitch_err = target_pitch - pitch;
@@ -713,27 +971,9 @@ void calcualatePIDRate(float dt_rate) {
 	float yaw_rate_err = target_rate_yaw - gz;
 	pid_y = PID_Calculate(&PID_Rate_Yaw, yaw_rate_err, dt_rate);
 
-	/* ============ALTITUDE HOLD - INNER (Velocity, 500Hz) ===========*/
-	float acc_z_inertial = -sin(pitch * DEG_TO_RAD) * ax
-			+ cos(pitch * DEG_TO_RAD) * sin(roll * DEG_TO_RAD) * ay
-			+ cos(pitch * DEG_TO_RAD) * cos(roll * DEG_TO_RAD) * az;
-	acc_z_inertial = (acc_z_inertial - 1) * 981.0f;
-
-	static float acc_z_filt = 0.0f;
-	static bool acc_z_filt_init = false;
-	const float LPF_ALPHA = 0.2f;
-	if (!acc_z_filt_init) {
-		acc_z_filt = acc_z_inertial;
-		acc_z_filt_init = true;
-	} else {
-		acc_z_filt = LPF_ALPHA * acc_z_inertial
-				+ (1.0f - LPF_ALPHA) * acc_z_filt;
-	}
-
-	Kalman2D_Predict(&kf, acc_z_filt, dt_rate); // <-- dùng dt_rate (2ms), không phải dt_angle
-
 	if (alt_hold) {
-		float vz_err = target_vz - kf.velocity;
+//		float vz_err = target_vz - kf.velocity;	// tof
+		float vz_err = target_vz - kf_4d.velocity;
 		pid_alt_vel_out = PID_Calculate(&PID_Alt_Vel, vz_err, dt_rate);
 		pid_alt = pid_alt_vel_out;
 	} else {
@@ -745,18 +985,25 @@ void calcualatePIDRate(float dt_rate) {
 	pid_p = constrain(pid_p, -300, 300);
 	pid_y = constrain(pid_y, -300, 300);
 	pid_alt = constrain(pid_alt, -MAX_ALT_OUTPUT, MAX_ALT_OUTPUT);
+
 }
 
+int sp1, sp2, sp3, sp4;
 void mixer() {
 	int m1 = (int) (float) throttle - pid_p - pid_r - pid_y + pid_alt;
 	int m2 = (int) (float) throttle + pid_p - pid_r + pid_y + pid_alt;
 	int m3 = (int) (float) throttle + pid_p + pid_r - pid_y + pid_alt;
 	int m4 = (int) (float) throttle - pid_p + pid_r + pid_y + pid_alt;
 
-//	int m1 = (int) (float) throttle - pid_p;
-//	int m2 = (int) (float) throttle + pid_p;
-//	int m3 = (int) (float) throttle + pid_p;
-//	int m4 = (int) (float) throttle - pid_p;
+//	sp1 = m1;
+//	sp2 = m2;
+//	sp3 = m3;
+//	sp4 = m4;
+
+//	int m1 = (int) (float) throttle - pid_r;
+//	int m2 = (int) (float) throttle - pid_r;
+//	int m3 = (int) (float) throttle + pid_r;
+//	int m4 = (int) (float) throttle + pid_r;
 
 	if (throttle > 1040) {
 		writeMotor(M1, m1);
@@ -800,12 +1047,30 @@ void calibIMU() {
 //	gy_offset = (gy_offset / 500);
 //	gz_offset = (gz_offset / 500);
 
-	ax_offset = -0.0187172852;
-	ay_offset = -0.0235258788;
-	az_offset = 0.98201561;
-	gx_offset = 0.497318834;
-	gy_offset = -0.169756278;
-	gz_offset = 0.151219875;
+	// truong test
+//	ax_offset = -0.0430698246;
+//	ay_offset = -0.0115541993;
+//	az_offset = 0.981339872;
+//	gx_offset = 0.435978264;
+//	gy_offset = -0.2842682;
+//	gz_offset = 0.185610518;
+
+	ax_offset = -0.0131186526;
+	ay_offset = -0.0222158208;
+	az_offset = 0.982454121;
+	gx_offset = 0.564877927;
+	gy_offset = -0.334876835;
+	gz_offset = 0.182927459;
+}
+
+float DSP_CalibrationAltitude(uint8_t sample) {
+	float h = 0;
+	for (int i = 0; i < sample; i++) {
+		DSP310_Read(&dsp_sensor);
+		h += dsp_sensor.altitude;
+		HAL_Delay(100);
+	}
+	return (float) h / sample;
 }
 /* USER CODE END 0 */
 
@@ -837,6 +1102,7 @@ int main(void) {
 
 	/* Initialize all configured peripherals */
 	MX_GPIO_Init();
+	MX_GPDMA1_Init();
 	MX_TIM3_Init();
 	MX_I2C1_Init();
 	MX_I2C2_Init();
@@ -846,8 +1112,8 @@ int main(void) {
 	MX_USART2_UART_Init();
 	MX_ICACHE_Init();
 	MX_UART7_Init();
-	MX_SPI2_Init();
 	MX_TIM6_Init();
+	MX_SPI2_Init();
 	/* USER CODE BEGIN 2 */
 	HAL_TIM_PWM_Init(&htim3);
 	HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
@@ -857,16 +1123,21 @@ int main(void) {
 
 	HAL_TIM_Base_Start_IT(&htim6);
 
-//	HAL_UART_Init(&huart1);
-	Serial_Init(&huart1, 115200);
-	UART_Command_Init(&huart1);
+	HAL_UART_Init(&huart7);
+//	Serial_Init(&huart1, 115200);
+	UART_Command_Init(&huart7);
 //	MTF01_Init(&mtf01_handle, &huart2);
+//	GPS_Init(&huart1);
+	GPS_Init_DMA(&huart1);
 	MTF01_Init(&huart2);
 
 	HAL_I2C_Init(&hi2c1);
 	HAL_I2C_Init(&hi2c2);
+#ifdef USE_QMC5883
 	QMC5883_Init(&hi2c2, &mag, 0x00, 0x01, 0x03, 0x01);
-
+#else
+	IST8310_Init(&hi2c2, &ist8310);
+#endif
 	HAL_SPI_Init(&hspi1);
 	HAL_SPI_Init(&hspi2);
 	ICM_CS_HIGH();
@@ -877,37 +1148,56 @@ int main(void) {
 	NRF24_OpenReadingPipe(0, address);
 	NRF24_StartListening();
 
-//	sprintf(buf, "STATUS=%02X RF_CH=%02X\r\n", status1, ch);
-//	HAL_UART_Transmit(&huart1, (uint8_t*) buf, strlen(buf), HAL_MAX_DELAY);
-//	Serial_printf(&huart1, "FEATURE=%02X\r\n", NRF24_ReadReg(FEATURE));
-//	Serial_printf(&huart1, "DYNPD=%02X\r\n", NRF24_ReadReg(DYNPD));
-//	Serial_printf(&huart1, "FIFO=%02X\r\n", NRF24_ReadReg(FIFO_STATUS));
-//	Serial_printf(&huart1, "STATUS=%02X\r\n", NRF24_ReadReg(STATUS));
-//	Serial_printf(&huart1, "CONFIG=%02X\r\n", NRF24_ReadReg(CONFIG));
-
 	HAL_Delay(500);
 	DWT_Init();
 
 	ICM20602_Init();
 	mag.declination = 0;
 
+	INA219_Init(&hi2c2);
+
 	PID_Init(&PID_Angle, kp_angle, ki_angle, kd_angle, 0.2);
 	PID_Init(&PID_Rate_Pitch, kp_p, ki_p, kd_p, 0.2);
+	PID_SetIntegralLimits(&PID_Rate_Pitch, -60.0f, 60.0f);
 	PID_Init(&PID_Rate_Roll, kp_r, ki_r, kd_r, 0.2);
+	PID_SetIntegralLimits(&PID_Rate_Roll, -60.0f, 60.0f);
 	PID_Init(&PID_Rate_Yaw, kp_y, ki_y, kd_y, 0.2);
+
 	PID_Init(&PID_Alt, kp_alt, ki_alt, kd_alt, 0.2);
 	PID_Init(&PID_Alt_Pos, kp_alt_pos, ki_alt_pos, kd_alt_pos, 0.2);
 	PID_Init(&PID_Alt_Vel, kp_alt_vel, ki_alt_vel, kd_alt_vel, 0.2);
+	PID_SetIntegralLimits(&PID_Alt_Vel, -40.0f, 40.0f);
+
 	PID_Init(&PID_Pos_X, kp_xy_pos, ki_xy_pos, kd_xy_pos, 0.2);
 	PID_Init(&PID_Pos_Y, kp_xy_pos, ki_xy_pos, kd_xy_pos, 0.2);
-	PID_Init(&PID_Vel_X, kp_xy_vel, ki_xy_vel, kd_xy_vel, 0.2);
-	PID_Init(&PID_Vel_Y, kp_xy_vel, ki_xy_vel, kd_xy_vel, 0.2);
 
-	Kalman2D_Init(&kf, 2);
+	PID_Init(&PID_Vel_X, kp_xy_vel, ki_xy_vel, kd_xy_vel, 0.2);
+	PID_SetIntegralLimits(&PID_Vel_X, -6.0f, 6.0f); // 40% of 15deg
+	PID_Init(&PID_Vel_Y, kp_xy_vel, ki_xy_vel, kd_xy_vel, 0.2);
+	PID_SetIntegralLimits(&PID_Vel_Y, -6.0f, 6.0f);
+
+	Kalman2D_Init(&kf, 16);
 	KalmanAxis_Init(&kf_x);
 	KalmanAxis_Init(&kf_y);
+	KalmanAxis_Init(&kf_x_gps);
+	KalmanAxis_Init(&kf_y_gps);
+
+	KalmanPos_Init(&kf_pos_x, 0.004f, 0.05f, 1.5f);
+	KalmanPos_Init(&kf_pos_y, 0.004f, 0.05f, 1.5f);
+	KalmanGPSAxis_Init(&kf_x_gps_3d);
+	KalmanGPSAxis_Init(&kf_y_gps_3d);
 //	PosHold_Init(&posHold);
 
+	if (!DSP310_Init(&dsp_sensor, &hi2c1)) {
+		Serial_printf(&huart1, "DSP Init Failed!\r\n");
+	} else
+		Serial_printf(&huart1, "[OK] DSP Init Successful!\r\n");
+
+	alt_offset = DSP_CalibrationAltitude(10);	// 10 sample
+
+	DSP310_Read(&dsp_sensor);
+	float h = dsp_sensor.altitude;
+	Kalman4D_Init(&kf_4d, h - alt_offset);
 	calibIMU();
 
 	bool yaw_hold_init = false;
@@ -916,13 +1206,17 @@ int main(void) {
 	while (1) {
 		if (NRF24_Available()) {
 			uint8_t len = NRF24_GetDynamicPayloadSize();
-			if (len == sizeof(struct ControlData)) {
+			if (len == sizeof(ControlData)) {
 				NRF24_Read((uint8_t*) &rxData, len);
-				if (rxData.chinhtocdoquat == 0)
+				if (rxData.chinhtocdoquat == 1000)
 					break;
 			}
 		}
 	}
+//	NRF24_WriteAckPayload(0, &txData, sizeof(TelemetryData));		// thong bao da ket noi thanh cong voi tx
+
+	uint32_t ina219_timer = 0;
+	uint32_t esp_timer = 0;
 	Serial_printf(&huart1, "[OK] START\r\n");
 	/* USER CODE END 2 */
 
@@ -944,30 +1238,53 @@ int main(void) {
 		if (throttle < 1030) {
 			yaw_hold_init = false;
 			target_yaw = yaw;
+		}
+		if (throttle < 1300) {
 			PID_Reset(&PID_Rate_Yaw);
+			PID_Reset(&PID_Rate_Pitch);
+			PID_Reset(&PID_Rate_Roll);
+			PID_Reset(&PID_Angle);
 		}
 //		if (pid_flag) {		// timer interrupt
 //			PID_task();
 //			pid_flag = 0;
 //		}
 		mtf01_updated = MTF01_Update(&mtf_data);
+		GPS_Process(&gps);
 		readIMU();
 		calculateAngle(dt);
-		Estimate_Position(dt);
+		Estimate_Position_GPS_Kalman(dt);
+//		Estimate_Position(dt);
+//		Estimate_Position_Kalman(dt);
+//		GPS_PositionHold(dt);
 		PID_Task(dt);
 		mixer();
-//		Estimate_Position(dt);
-
-//		Serial_printf(&huart1, "yaw=%.2f ", yaw);
-//		Serial_printf(&huart1, "x=%.2f ", est_x);
-//		Serial_printf(&huart1, "y=%.2f\r\n", est_y);
-//		Serial_printf(&huart1, "tp=%.2f ", target_pitch);
-//		Serial_printf(&huart1, "tr=%.2f\r\n", target_roll);
+		if (DWT_GetMicros() - ina219_timer > 500000) {
+			float voltage = INA219_Read(&hi2c2);
+//			Serial_printf(&huart1, "%f\r\n", voltage);
+			if (voltage >= 0.0f) {
+				txData.battery = voltage;
+			}
+			ina219_timer = DWT_GetMicros();
+		}
+//		if (DWT_GetMicros() - esp_timer > 300000) {
+//			char gps_tx[100]; // Tăng kích thước mảng lên để chứa đủ 8 số
+//			// Format: lat, lon, est_x, est_y, pitch, roll, home_lat, home_lon
+//			sprintf(gps_tx, "%f,%f,%f,%f,%f,%f,%f,%f\n", gps.latitude,
+//					gps.longitude, est_x, est_y, target_pitch, target_roll,
+//					home_lat, home_lon);
+//
+//			HAL_UART_Transmit(&huart7, (uint8_t*) gps_tx, strlen(gps_tx), 100);
+//			esp_timer = DWT_GetMicros();
+//		}
+		if (mtf_data.flow_quality >= 100)
+			HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2, 1);
+		else
+			HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2, 0);
 		while ((DWT_GetMicros() - start) < 2000)
 			;
 //		time_dt = DWT_GetMicros() - start;
 //		Serial_printf(&huart1, "dt=%.4f\r\n", time_dt);
-//		Serial_printf(&huart1, "yaw=%.1f\r\n", yaw);
 	}
 	/* USER CODE END 3 */
 }
@@ -1028,6 +1345,33 @@ void SystemClock_Config(void) {
 	/** Configure the programming delay
 	 */
 	__HAL_FLASH_SET_PROGRAM_DELAY(FLASH_PROGRAMMING_DELAY_2);
+}
+
+/**
+ * @brief GPDMA1 Initialization Function
+ * @param None
+ * @retval None
+ */
+static void MX_GPDMA1_Init(void) {
+
+	/* USER CODE BEGIN GPDMA1_Init 0 */
+
+	/* USER CODE END GPDMA1_Init 0 */
+
+	/* Peripheral clock enable */
+	__HAL_RCC_GPDMA1_CLK_ENABLE();
+
+	/* GPDMA1 interrupt Init */
+	HAL_NVIC_SetPriority(GPDMA1_Channel0_IRQn, 0, 0);
+	HAL_NVIC_EnableIRQ(GPDMA1_Channel0_IRQn);
+
+	/* USER CODE BEGIN GPDMA1_Init 1 */
+
+	/* USER CODE END GPDMA1_Init 1 */
+	/* USER CODE BEGIN GPDMA1_Init 2 */
+
+	/* USER CODE END GPDMA1_Init 2 */
+
 }
 
 /**
@@ -1177,8 +1521,7 @@ static void MX_SPI1_Init(void) {
 	hspi1.Init.NSSPolarity = SPI_NSS_POLARITY_LOW;
 	hspi1.Init.FifoThreshold = SPI_FIFO_THRESHOLD_01DATA;
 	hspi1.Init.MasterSSIdleness = SPI_MASTER_SS_IDLENESS_00CYCLE;
-	hspi1.Init.MasterInterDataIdleness =
-	SPI_MASTER_INTERDATA_IDLENESS_00CYCLE;
+	hspi1.Init.MasterInterDataIdleness = SPI_MASTER_INTERDATA_IDLENESS_00CYCLE;
 	hspi1.Init.MasterReceiverAutoSusp = SPI_MASTER_RX_AUTOSUSP_DISABLE;
 	hspi1.Init.MasterKeepIOState = SPI_MASTER_KEEP_IO_STATE_DISABLE;
 	hspi1.Init.IOSwap = SPI_IO_SWAP_DISABLE;
@@ -1224,8 +1567,7 @@ static void MX_SPI2_Init(void) {
 	hspi2.Init.NSSPolarity = SPI_NSS_POLARITY_LOW;
 	hspi2.Init.FifoThreshold = SPI_FIFO_THRESHOLD_01DATA;
 	hspi2.Init.MasterSSIdleness = SPI_MASTER_SS_IDLENESS_00CYCLE;
-	hspi2.Init.MasterInterDataIdleness =
-	SPI_MASTER_INTERDATA_IDLENESS_00CYCLE;
+	hspi2.Init.MasterInterDataIdleness = SPI_MASTER_INTERDATA_IDLENESS_00CYCLE;
 	hspi2.Init.MasterReceiverAutoSusp = SPI_MASTER_RX_AUTOSUSP_DISABLE;
 	hspi2.Init.MasterKeepIOState = SPI_MASTER_KEEP_IO_STATE_DISABLE;
 	hspi2.Init.IOSwap = SPI_IO_SWAP_DISABLE;
@@ -1546,10 +1888,10 @@ static void MX_GPIO_Init(void) {
 			GPIO_PIN_RESET);
 
 	/*Configure GPIO pin Output Level */
-	HAL_GPIO_WritePin(ICM_INT_GPIO_Port, ICM_INT_Pin, GPIO_PIN_RESET);
+	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2 | CSN_Pin | GPIO_PIN_8, GPIO_PIN_RESET);
 
 	/*Configure GPIO pin Output Level */
-	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5 | GPIO_PIN_8, GPIO_PIN_RESET);
+	HAL_GPIO_WritePin(ICM_INT_GPIO_Port, ICM_INT_Pin, GPIO_PIN_RESET);
 
 	/*Configure GPIO pins : CE_Pin SPI1_CS_Pin PC12 */
 	GPIO_InitStruct.Pin = CE_Pin | SPI1_CS_Pin | GPIO_PIN_12;
@@ -1557,6 +1899,13 @@ static void MX_GPIO_Init(void) {
 	GPIO_InitStruct.Pull = GPIO_NOPULL;
 	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
 	HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+
+	/*Configure GPIO pins : PB2 CSN_Pin PB8 */
+	GPIO_InitStruct.Pin = GPIO_PIN_2 | CSN_Pin | GPIO_PIN_8;
+	GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+	GPIO_InitStruct.Pull = GPIO_NOPULL;
+	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+	HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
 	/*Configure GPIO pins : PC8 PC9 PC10 PC11 */
 	GPIO_InitStruct.Pin = GPIO_PIN_8 | GPIO_PIN_9 | GPIO_PIN_10 | GPIO_PIN_11;
@@ -1580,13 +1929,6 @@ static void MX_GPIO_Init(void) {
 	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
 	GPIO_InitStruct.Alternate = GPIO_AF12_SDMMC1;
 	HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
-
-	/*Configure GPIO pins : PB5 PB8 */
-	GPIO_InitStruct.Pin = GPIO_PIN_5 | GPIO_PIN_8;
-	GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-	GPIO_InitStruct.Pull = GPIO_NOPULL;
-	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-	HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
 	/* USER CODE BEGIN MX_GPIO_Init_2 */
 

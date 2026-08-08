@@ -310,3 +310,98 @@ void NRF24_Read(uint8_t *buf, uint8_t len)
     NRF24_WriteReg(STATUS, (1 << RX_DR));
 }
 
+
+
+/*==========================================================
+                    TRANSMIT
+==========================================================*/
+
+void NRF24_OpenWritingPipe(uint8_t *addr)
+{
+    // Ghi địa chỉ nhận (TX_ADDR)
+    NRF24_WriteBuf(TX_ADDR, addr, 5);
+
+    // Bắt buộc phải cấu hình RX_ADDR_P0 giống hệt TX_ADDR
+    // để nRF24 có thể nhận được tín hiệu Auto-Acknowledgment (Auto-ACK)
+    NRF24_WriteBuf(RX_ADDR_P0, addr, 5);
+}
+
+uint8_t NRF24_Write(uint8_t *buf, uint8_t len)
+{
+    uint8_t status = 0;
+    uint8_t tx[33];
+    uint8_t rx[33];
+
+    // Tạm dừng lắng nghe và chuyển sang chế độ TX (Clear PRIM_RX)
+    uint8_t config = NRF24_ReadReg(CONFIG);
+    config &= ~(1 << 0);
+    NRF24_WriteReg(CONFIG, config);
+
+    // Chuẩn bị lệnh ghi vào TX FIFO
+    tx[0] = W_TX_PAYLOAD;
+    memcpy(&tx[1], buf, len);
+
+    NRF_CSN_LOW();
+    HAL_SPI_TransmitReceive(&hspi2, tx, rx, len + 1, HAL_MAX_DELAY);
+    NRF_CSN_HIGH();
+
+    // Tạo một xung HIGH trên chân CE để bắt đầu truyền
+    // nRF24L01 yêu cầu xung CE tối thiểu 10us. Dùng HAL_Delay(1) (~1ms) là an toàn.
+    NRF_CE_HIGH();
+    HAL_Delay(1);
+    NRF_CE_LOW();
+
+    // Chờ quá trình truyền hoàn tất
+    // Kiểm tra cờ TX_DS (Data Sent) hoặc MAX_RT (Max Retries - lỗi không nhận được ACK)
+    uint32_t tickstart = HAL_GetTick();
+    while (1)
+    {
+        status = NRF24_ReadReg(STATUS);
+
+        if (status & ((1 << TX_DS) | (1 << MAX_RT)))
+        {
+            break;
+        }
+
+        // Timeout bảo vệ treo chip (10ms)
+        if (HAL_GetTick() - tickstart > 10)
+        {
+            break;
+        }
+    }
+
+    // Xóa cờ ngắt bằng cách ghi bit 1 vào các cờ tương ứng
+    NRF24_WriteReg(STATUS, (1 << TX_DS) | (1 << MAX_RT));
+
+    // Kiểm tra nếu lỗi do vượt quá số lần thử lại (MAX_RT)
+    if (status & (1 << MAX_RT))
+    {
+        NRF24_FlushTX(); // Bắt buộc phải flush TX FIFO khi gặp lỗi MAX_RT để tránh treo bộ đệm
+        return 0; // Trả về 0 -> Truyền thất bại
+    }
+
+    return 1; // Trả về 1 -> Truyền thành công
+}
+
+/*==========================================================
+                    ACK PAYLOAD
+==========================================================*/
+
+void NRF24_WriteAckPayload(uint8_t pipe, uint8_t *buf, uint8_t len)
+{
+    uint8_t tx[33];
+    uint8_t rx[33];
+
+    // Giới hạn độ dài tối đa của nRF24L01 là 32 byte
+    if(len > 32) len = 32;
+
+    // Mã lệnh W_ACK_PAYLOAD (0xA8) cộng với số hiệu Pipe (0-5)
+    tx[0] = 0xA8 | (pipe & 0x07);
+
+    // Copy dữ liệu cần gửi vào mảng TX
+    memcpy(&tx[1], buf, len);
+
+    NRF_CSN_LOW();
+    HAL_SPI_TransmitReceive(&hspi2, tx, rx, len + 1, HAL_MAX_DELAY);
+    NRF_CSN_HIGH();
+}

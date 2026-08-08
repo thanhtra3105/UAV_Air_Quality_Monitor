@@ -25,6 +25,22 @@ typedef struct {
 	float P[2][2];       // Ma trận hiệp phương sai sai số P
 } Kalman2D_t;
 
+// kalman.h — thêm struct mới
+typedef struct {
+    float altitude;
+    float velocity;
+    float baro_bias;   // trôi chậm của baro, ước lượng riêng
+    float P[3][3];
+} Kalman3D_t;
+
+typedef struct {
+    float altitude;
+    float velocity;
+    float acc_bias;
+    float baro_bias;
+    float P[4][4];
+} Kalman4D_t;
+
 typedef struct {
 	float pos;
 	float vel;
@@ -46,6 +62,16 @@ void Kalman2D_Compute(Kalman2D_t *kf, float acc_z, float alt_measured,
 void KalmanAxis_Init(KalmanAxis_t *kf);
 void KalmanAxis_Predict(KalmanAxis_t *kf, float accel, float dt);
 void KalmanAxis_UpdateVel(KalmanAxis_t *kf, float vel_measure, float R);
+void KalmanAxis_UpdatePos(KalmanAxis_t *kf, float pos_meas, float R);
 void KalmanAxis_Compute(KalmanAxis_t *kf, float accel, float vel_measure,
 		float R, float dt);
+
+void Kalman3D_Init(Kalman3D_t *kf, float initial_alt);
+void Kalman3D_Predict(Kalman3D_t *kf, float acc_z, float dt);
+void Kalman3D_Update(Kalman3D_t *kf, float alt_measured, float sigma_alt);
+
+void Kalman4D_Init(Kalman4D_t *kf, float initial_alt);
+void Kalman4D_Predict(Kalman4D_t *kf, float acc_z, float dt);
+void Kalman4D_Update(Kalman4D_t *kf, float alt_measured, float sigma_alt);
+
 #endif /* INC_KALMAN_H_ */

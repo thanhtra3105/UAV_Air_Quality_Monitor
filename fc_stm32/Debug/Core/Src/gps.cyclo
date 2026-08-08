@@ -1,5 +1,6 @@
-../Core/Src/gps.c:13:6:GPS_Init	1
-../Core/Src/gps.c:19:7:NMEA_To_DecimalDegrees	3
-../Core/Src/gps.c:40:13:get_field	6
-../Core/Src/gps.c:62:6:GPS_UART_RxCallback	4
-../Core/Src/gps.c:80:6:GPS_Process	9
+../Core/Src/gps.c:145:6:GPS_Init_DMA	1
+../Core/Src/gps.c:154:6:GPS_UART_RxEventCallback	4
+../Core/Src/gps.c:171:13:get_field	6
+../Core/Src/gps.c:192:8:NMEA_To_DecimalDegrees	3
+../Core/Src/gps.c:204:6:GPS_Process	14
+../Core/Src/gps.c:253:6:HAL_UART_ErrorCallback	2

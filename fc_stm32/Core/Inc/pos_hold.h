@@ -81,3 +81,14 @@
 //                    float dt);
 //
 //#endif /* INC_POS_HOLD_H_ */
+
+
+
+#ifndef INC_POS_HOLD_H_
+#define INC_POS_HOLD_H_
+
+#include "stm32h5xx_hal.h"
+#include <stdint.h>
+
+
+#endif

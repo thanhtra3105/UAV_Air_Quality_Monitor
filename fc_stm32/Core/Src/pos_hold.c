@@ -192,3 +192,8 @@
 //    (void)roll;
 //    (void)pitch;
 //}
+
+
+#include "pos_hold.h"
+#include <math.h>
+#include <string.h>

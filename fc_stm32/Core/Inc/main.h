@@ -65,6 +65,8 @@ void Error_Handler(void);
 #define SPI1_CS_GPIO_Port GPIOC
 #define ICM_INT_Pin GPIO_PIN_12
 #define ICM_INT_GPIO_Port GPIOA
+#define CSN_Pin GPIO_PIN_5
+#define CSN_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */
 

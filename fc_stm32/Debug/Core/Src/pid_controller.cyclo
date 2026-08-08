@@ -1,5 +1,6 @@
 ../Core/Src/pid_controller.c:7:14:constrainFloat	3
-../Core/Src/pid_controller.c:16:6:PID_Init	1
-../Core/Src/pid_controller.c:36:7:PID_Calculate	2
-../Core/Src/pid_controller.c:67:6:PID_Reset	1
-../Core/Src/pid_controller.c:74:6:PID_SetGain	1
+../Core/Src/pid_controller.c:16:6:PID_SetIntegralLimits	1
+../Core/Src/pid_controller.c:22:6:PID_Init	1
+../Core/Src/pid_controller.c:42:7:PID_Calculate	2
+../Core/Src/pid_controller.c:73:6:PID_Reset	1
+../Core/Src/pid_controller.c:80:6:PID_SetGain	1

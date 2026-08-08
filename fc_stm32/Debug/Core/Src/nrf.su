@@ -14,3 +14,6 @@
 ../Core/Src/nrf.c:253:9:NRF24_Available	16	static
 ../Core/Src/nrf.c:262:9:NRF24_GetDynamicPayloadSize	24	static
 ../Core/Src/nrf.c:289:6:NRF24_Read	96	static
+../Core/Src/nrf.c:319:6:NRF24_OpenWritingPipe	16	static
+../Core/Src/nrf.c:329:9:NRF24_Write	104	static
+../Core/Src/nrf.c:390:6:NRF24_WriteAckPayload	96	static

@@ -26,22 +26,20 @@ typedef struct
 
 } PIDController_t;
 
-/* Khởi tạo PID */
+void PID_SetIntegralLimits(PIDController_t *pid, float iMin, float iMax);
+
 void PID_Init(PIDController_t *pid,
               float kp,
               float ki,
               float kd,
               float alpha);
 
-/* Tính PID */
 float PID_Calculate(PIDController_t *pid,
                     float error,
                     float dt);
 
-/* Reset trạng thái */
 void PID_Reset(PIDController_t *pid);
 
-/* Thay đổi hệ số PID */
 void PID_SetGain(PIDController_t *pid,
                  float kp,
                  float ki,
