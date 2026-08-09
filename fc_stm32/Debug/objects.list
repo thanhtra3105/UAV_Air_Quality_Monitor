@@ -8,6 +8,7 @@
 "./Core/Src/kalman_gps.o"
 "./Core/Src/kalman_position.o"
 "./Core/Src/main.o"
+"./Core/Src/mission.o"
 "./Core/Src/mtf01.o"
 "./Core/Src/nrf.o"
 "./Core/Src/pid_controller.o"

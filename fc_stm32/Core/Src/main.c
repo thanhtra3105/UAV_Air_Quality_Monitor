@@ -62,7 +62,8 @@
 #include "ist8310.h"
 #include "kalman_position.h"
 #include "kalman_gps.h"
-
+#include "kalman.h"
+#include "mission.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -72,8 +73,8 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-//#define USE_QMC5883
-#define USE_IST8310
+#define USE_QMC5883
+//#define USE_IST8310
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -96,6 +97,7 @@ UART_HandleTypeDef huart4;
 UART_HandleTypeDef huart7;
 UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
+DMA_HandleTypeDef handle_GPDMA1_Channel1;
 DMA_HandleTypeDef handle_GPDMA1_Channel0;
 
 /* USER CODE BEGIN PV */
@@ -176,8 +178,9 @@ Kalman4D_t kf_4d;
 IST8310_Data_t ist8310;
 KalmanPos_t kf_pos_x;
 KalmanPos_t kf_pos_y;
-KalmanGPSAxis_t kf_x_gps_3d;
-KalmanGPSAxis_t kf_y_gps_3d;
+
+KalmanFilter1D_t kf_North; // X Axis
+KalmanFilter1D_t kf_East;  // Y Axis
 
 float dt;
 float gx, gy, gz;
@@ -328,6 +331,9 @@ uint8_t gps_home_set = 0;
 
 static float acc_z_filt = 0.0f;
 
+// Buffer chứa dữ liệu thô từ DMA
+uint8_t rx_mission_buffer[MISSION_BUFFER_SIZE];
+
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 	if (huart->Instance == UART7) {
 		UART_CMD_Process(&huart7);
@@ -355,11 +361,21 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 //		HAL_UART_Receive_IT(&huart1, &rx_byte, 1);
 //	}
 }
-
+int counttt = 0;
 // Hàm Callback mặc định của HAL cho sự kiện Receive To IDLE
 void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size) {
 	// Đẩy sự kiện sang cho hàm xử lý của ta bên file gps.c
 	GPS_UART_RxEventCallback(huart, Size);
+	if (huart->Instance == UART7) // Đã chuyển sang UART7
+	{
+		counttt++;
+		// Đẩy phần dữ liệu vừa nhận được vào module xử lý Mission
+		Mission_ParseChunk(rx_mission_buffer, Size);
+
+		// Khởi động lại DMA để tiếp tục đón mẻ dữ liệu mới từ ESP32
+		HAL_UARTEx_ReceiveToIdle_DMA(&huart7, rx_mission_buffer,
+		MISSION_BUFFER_SIZE);
+	}
 }
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
@@ -421,10 +437,7 @@ void RxController() {
 		txData.lon = (int32_t) (gps.longitude * 1e7);
 		txData.x = est_x;
 		txData.y = est_y;
-//		txData.alt = current_alt;
-		txData.alt = yaw;
-//		txData.target_x = target_roll_body;
-//		txData.target_y = target_pitch_body;
+		txData.alt = current_alt;
 		NRF24_WriteAckPayload(0, &txData, sizeof(TelemetryData));
 
 	} else {
@@ -448,7 +461,7 @@ void readIMU() {
 
 void Estimate_Position_Kalman(float dt) {
 	/*=============================
-	 1. Rotation Body -> Earth (Giữ nguyên của bạn)
+	 1. Rotation Body -> Earth
 	 =============================*/
 	float cy = cosf(yaw * DEG_TO_RAD);
 	float sy = sinf(yaw * DEG_TO_RAD);
@@ -723,27 +736,6 @@ void positionHold(float dt) {
 
 		target_vx = constrain(target_vx, -MAX_TARGET_VEL_XY, MAX_TARGET_VEL_XY);
 		target_vy = constrain(target_vy, -MAX_TARGET_VEL_XY, MAX_TARGET_VEL_XY);
-//		// ==== VELOCITY X,Y LOOP=====
-//		float err_vx = target_vx - est_vx;
-//		float err_vy = target_vy - est_vy;
-//
-//		// Góc nghiêng cần thiết trên hệ tọa độ Trái Đất
-//		float out_angle_earth_x = PID_Calculate(&PID_Vel_X, err_vx, dt);
-//		float out_angle_earth_y = PID_Calculate(&PID_Vel_Y, err_vy, dt);
-//
-//		// VÒNG 3: ROTATION
-//		float cy = cosf(yaw * DEG_TO_RAD);
-//		float sy = sinf(yaw * DEG_TO_RAD);
-//		float target_pitch_body = out_angle_earth_x * cy
-//				+ out_angle_earth_y * sy;
-//		float target_roll_body = -out_angle_earth_x * sy
-//				+ out_angle_earth_y * cy;
-//		// Giới hạn góc nghiêng tối đa khi giữ vị trí (VD: 15 độ)
-//		target_pitch_body = constrain(target_pitch_body, -15.0f, 15.0f);
-//		target_roll_body = constrain(target_roll_body, -15.0f, 15.0f);
-//
-//		target_pitch = -target_pitch_body; // Âm ngóc, dương chúi (Tùy cấu hình hàm cân bằng của bạn)
-//		target_roll = target_roll_body;
 
 		// ==== VELOCITY X,Y LOOP=====
 		float err_vx = target_vx - est_vx;
@@ -788,96 +780,159 @@ void positionHold(float dt) {
 #define KI_GPS_BIAS    0.02f   // hệ số học bias — BẮT ĐẦU NHỎ, tune tăng dần
 #define MAX_ACCEL_BIAS 1.0f    // m/s^2, chặn để tránh runaway khi GPS jump/nhiễu
 
+float lat_err, lon_err;
+float pos_N, pos_E;
 void Estimate_Position_GPS_Kalman(float dt) {
 	/*=============================
 	 1. Xoay gia tốc từ Body -> Earth Frame
 	 =============================*/
+	/* Covert FLU to FRD*/
+	float ax_frd = ax;
+	float ay_frd = -ay;
+	float az_frd = -az;
+
 	float cy = cosf(yaw * DEG_TO_RAD);
 	float sy = sinf(yaw * DEG_TO_RAD);
+
 	float cp = cosf(pitch * DEG_TO_RAD);
 	float sp = sinf(pitch * DEG_TO_RAD);
+
 	float cr = cosf(roll * DEG_TO_RAD);
 	float sr = sinf(roll * DEG_TO_RAD);
+	/*========================================
+	 * FRD -> NED
+	 *========================================*/
 
-	ax_earth = cy * cp * ax + (cy * sp * sr - sy * cr) * ay
-			+ (cy * sp * cr + sy * sr) * az;
+	ax_earth = cy * cp * ax_frd + (-cy * sp * sr - sy * cr) * ay_frd
+			+ (-cy * sp * cr + sy * sr) * az_frd;
 
-	ay_earth = sy * cp * ax + (sy * sp * sr + cy * cr) * ay
-			+ (sy * sp * cr - cy * sr) * az;
+	ay_earth = sy * cp * ax_frd + (-sy * sp * sr + cy * cr) * ay_frd
+			+ (-sy * sp * cr - cy * sr) * az_frd;
 
+	/* g -> m/s² */
 	ax_earth *= 9.81f;
 	ay_earth *= 9.81f;
 
 	/*=============================
-	 2. Kalman PREDICT (Chạy 500Hz bằng IMU)
+	 2. Kalman PREDICT (500Hz - IMU)
 	 =============================*/
-	KalmanGPSAxis_Predict(&kf_x_gps_3d, ax_earth, dt);
-	KalmanGPSAxis_Predict(&kf_y_gps_3d, ay_earth, dt);
+	KalmanGPS_Predict(&kf_North, ax_earth, dt);
+	KalmanGPS_Predict(&kf_East, ay_earth, dt);
 
 	/*=============================
 	 3. Kalman UPDATE (Chạy ~10Hz bằng GPS)
 	 =============================*/
-
-	if (gps.fix_quality > 0 && gps.ready == 1) {
+	if (gps.fixType >= 3 && gps.ready == 1) {
 		if (!gps_home_set) {
 			home_lat = gps.latitude;
 			home_lon = gps.longitude;
 			gps_home_set = 1;
 
 			// Reset trạng thái
-			kf_x_gps_3d.pos = 0.0f;
-			kf_x_gps_3d.vel = 0.0f;
-			kf_x_gps_3d.bias = 0.0f;
-			kf_y_gps_3d.pos = 0.0f;
-			kf_y_gps_3d.vel = 0.0f;
-			kf_y_gps_3d.bias = 0.0f;
+			kf_North.pos = 0.0f;
+			kf_North.vel = 0.0f;
+			kf_North.bias = 0.0f;
+			kf_East.pos = 0.0f;
+			kf_East.vel = 0.0f;
+			kf_East.bias = 0.0f;
+
 		} else {
-			float lat_err = gps.latitude - home_lat;
-			float lon_err = gps.longitude - home_lon;
+			lat_err = (float) gps.latitude - home_lat;
+			lon_err = (float) gps.longitude - home_lon;
 
-			float new_gps_x = lat_err * 111320.0f;
-			float new_gps_y = lon_err * 111320.0f * cosf(home_lat * DEG_TO_RAD);
+			pos_N = lat_err * 111320.0f;
+			pos_E = lon_err * 111320.0f * cosf(home_lat * DEG_TO_RAD);
 
-			// Tính độ lệch xem có phải nhiễu (outlier) không
-			float diff_x = new_gps_x - est_x;
-			float diff_y = new_gps_y - est_y;
+			float vel_N = (float) gps.velN / 1000.0f;
+			float vel_E = (float) gps.velE / 1000.0f;
 
-			if (sqrtf(diff_x * diff_x + diff_y * diff_y) < 5.0f) {
-				gps_x = new_gps_x;
-				gps_y = new_gps_y;
+			// Bình phương biến số sai số GPS để làm nhiễu (Ví dụ pAcc báo sai số 1.5m -> r = 1.5*1.5)
+			float r_pos_noise = (float) (gps.hAcc / 1000.0f)
+					* (gps.hAcc / 1000.0f);
+			float r_vel_noise = (float) (gps.sAcc / 1000.0f)
+					* (gps.sAcc / 1000.0f);
 
-				KalmanGPSAxis_UpdatePos(&kf_x_gps_3d, gps_x, 1.0f);
-				KalmanGPSAxis_UpdatePos(&kf_y_gps_3d, gps_y, 1.0f);
-			} else {
-				// Bỏ qua giá trị GPS bị lỗi
-			}
+			KalmanGPS_Update(&kf_North, pos_N, vel_N, r_pos_noise, r_vel_noise);
+			KalmanGPS_Update(&kf_East, pos_E, vel_E, r_pos_noise, r_vel_noise);
 		}
 		gps.ready = 0;
 	}
 
-	// 4. Gán State cho hàm PID Position Hold
-	est_x = kf_x_gps_3d.pos;
-	est_vx = kf_x_gps_3d.vel;
-	est_y = kf_y_gps_3d.pos;
-	est_vy = kf_y_gps_3d.vel;
+	/* 4. Gán State cho hàm PID Position Hold */
+	est_x = kf_North.pos;
+	est_vx = kf_North.vel;
+	est_y = kf_East.pos;
+	est_vy = kf_East.vel;
 }
 
-float err_x, err_y;
+//float err_x, err_y;
+uint16_t current_wp_index = 0;
+uint8_t mission_running = 0;
+#define WAYPOINT_RADIUS 2.0f // Bán kính 2 mét để xác nhận đã đến điểm
+
 void GPS_PositionHold(float dt) {		// PID
 	uint8_t gps_hold_sw = rxData.nut2;
 
 	// Yêu cầu phải bật công tắc, có sóng GPS và đã chốt Home
 	if (rxData.nut1 && gps_hold_sw && gps_home_set) {
-
 		if (!pos_hold_active) {
 			target_x = est_x; // Khóa vị trí hiện tại của Kalman
 			target_y = est_y;
+
+			current_wp_index = 0;
+
+			// Kiểm tra xem có Mission nào trong RAM chưa
+			if (Mission_IsReady() && Mission_GetCount() > 0) {
+				mission_running = 1;
+			} else {
+				mission_running = 0;
+			}
+
 			PID_Reset(&PID_Pos_X);
 			PID_Reset(&PID_Pos_Y);
 			PID_Reset(&PID_Vel_X);
 			PID_Reset(&PID_Vel_Y);
 			pos_hold_active = 1;
 		}
+
+		if (mission_running) {
+			Waypoint_t current_wp = Mission_GetWaypoint(current_wp_index);
+
+			// Quy đổi tọa độ Waypoint sang hệ mét (North/East) giống hệt hàm Kalman
+			float wp_lat_err = (float) current_wp.lat - home_lat;
+			float wp_lon_err = (float) current_wp.lon - home_lon;
+
+			float wp_target_x = wp_lat_err * 111320.0f;
+			float wp_target_y = wp_lon_err * 111320.0f
+					* cosf(home_lat * DEG_TO_RAD);
+
+			// Cập nhật mục tiêu cho PID Position
+			target_x = wp_target_x;
+			target_y = wp_target_y;
+
+			// Tính khoảng cách Euclid từ Drone đến Waypoint hiện tại
+			float dx = target_x - est_x;
+			float dy = target_y - est_y;
+			float dist_to_wp = sqrtf(dx * dx + dy * dy);
+
+			// Nếu Drone đã bay lọt vào bán kính Waypoint
+			if (dist_to_wp < WAYPOINT_RADIUS) {
+				// Kiểm tra xem còn Waypoint nào tiếp theo không
+				if (current_wp_index < Mission_GetCount() - 1) {
+					current_wp_index++; // Chuyển mục tiêu sang điểm tiếp theo
+				}
+				// (Nếu là điểm cuối cùng, nó sẽ không tăng index, drone tự động Hover tại điểm cuối)
+			}
+		}
+
+		float err_x = target_x - est_x;
+		float err_y = target_y - est_y;
+
+		target_vx = PID_Calculate(&PID_Pos_X, err_x, dt);
+		target_vy = PID_Calculate(&PID_Pos_Y, err_y, dt);
+		/* CONSTRAIN velocity 2m/s*/
+		target_vx = constrain(target_vx, -2.0f, 2.0f);
+		target_vy = constrain(target_vy, -2.0f, 2.0f);
 
 		// ==== VELOCITY X,Y LOOP=====
 		float err_vx = target_vx - est_vx;
@@ -909,7 +964,8 @@ void GPS_PositionHold(float dt) {		// PID
 	} else {
 		if (pos_hold_active) {
 			pos_hold_active = 0;
-			gps_home_set = 0;
+			mission_running = 0;
+//			gps_home_set = 0;
 			// Bỏ PosHold, phi công giành lại quyền điều khiển stick
 			// Để an toàn, có thể reset gps_home_set = 0 khi tắt
 		}
@@ -938,6 +994,7 @@ void calculatePIDAngle(float dt_angle) {
 
 	//	========== OPTICAL FLOW MTF01 POS HOLD =============
 //	positionHold(dt_angle);
+	//	========== GPS POS HOLD =============
 	GPS_PositionHold(dt_angle);
 
 	//  ================= PID ANGLE =================
@@ -1123,9 +1180,9 @@ int main(void) {
 
 	HAL_TIM_Base_Start_IT(&htim6);
 
-	HAL_UART_Init(&huart7);
+//	HAL_UART_Init(&huart7);
 //	Serial_Init(&huart1, 115200);
-	UART_Command_Init(&huart7);
+//	UART_Command_Init(&huart7);
 //	MTF01_Init(&mtf01_handle, &huart2);
 //	GPS_Init(&huart1);
 	GPS_Init_DMA(&huart1);
@@ -1184,9 +1241,13 @@ int main(void) {
 
 	KalmanPos_Init(&kf_pos_x, 0.004f, 0.05f, 1.5f);
 	KalmanPos_Init(&kf_pos_y, 0.004f, 0.05f, 1.5f);
-	KalmanGPSAxis_Init(&kf_x_gps_3d);
-	KalmanGPSAxis_Init(&kf_y_gps_3d);
-//	PosHold_Init(&posHold);
+
+	KalmanGPS_Init(&kf_North, 0.0f, 0.0f, 0.1f, 0.001f);
+	KalmanGPS_Init(&kf_East, 0.0f, 0.0f, 0.1f, 0.001f);
+
+	Mission_Init();
+	HAL_UARTEx_ReceiveToIdle_DMA(&huart7, rx_mission_buffer,
+	MISSION_BUFFER_SIZE);
 
 	if (!DSP310_Init(&dsp_sensor, &hi2c1)) {
 		Serial_printf(&huart1, "DSP Init Failed!\r\n");
@@ -1227,7 +1288,7 @@ int main(void) {
 
 		/* USER CODE BEGIN 3 */
 		uint32_t start = DWT_GetMicros();
-		uint32_t time_get = HAL_GetTick();
+//		uint32_t time_get = HAL_GetTick();
 		dt = 0.002f;
 		RxController();
 		if (!yaw_hold_init && throttle > 1030) {
@@ -1251,15 +1312,19 @@ int main(void) {
 //		}
 		mtf01_updated = MTF01_Update(&mtf_data);
 		GPS_Process(&gps);
+//		if (Mission_IsReady()) {
+////			char tx_buf[30];
+////			sprintf(tx_buf,"%d\r\n", Mission_GetCount() );
+////			HAL_UART_Transmit(&huart7, tx_buf, strlen(tx_buf), 20);
+//		}
 		readIMU();
 		calculateAngle(dt);
 		Estimate_Position_GPS_Kalman(dt);
-//		Estimate_Position(dt);
-//		Estimate_Position_Kalman(dt);
-//		GPS_PositionHold(dt);
 		PID_Task(dt);
 		mixer();
 		if (DWT_GetMicros() - ina219_timer > 500000) {
+
+
 			float voltage = INA219_Read(&hi2c2);
 //			Serial_printf(&huart1, "%f\r\n", voltage);
 			if (voltage >= 0.0f) {
@@ -1277,7 +1342,7 @@ int main(void) {
 //			HAL_UART_Transmit(&huart7, (uint8_t*) gps_tx, strlen(gps_tx), 100);
 //			esp_timer = DWT_GetMicros();
 //		}
-		if (mtf_data.flow_quality >= 100)
+		if (gps.fixType == 3 && gps.numSV > 20 && mission_running)	// 3d fix and min 20 satelites
 			HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2, 1);
 		else
 			HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2, 0);
@@ -1364,6 +1429,8 @@ static void MX_GPDMA1_Init(void) {
 	/* GPDMA1 interrupt Init */
 	HAL_NVIC_SetPriority(GPDMA1_Channel0_IRQn, 0, 0);
 	HAL_NVIC_EnableIRQ(GPDMA1_Channel0_IRQn);
+	HAL_NVIC_SetPriority(GPDMA1_Channel1_IRQn, 0, 0);
+	HAL_NVIC_EnableIRQ(GPDMA1_Channel1_IRQn);
 
 	/* USER CODE BEGIN GPDMA1_Init 1 */
 

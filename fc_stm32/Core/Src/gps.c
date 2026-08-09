@@ -1,262 +1,215 @@
-//#include "gps.h"
-//#include <string.h>
-//#include <stdlib.h>
-//
-//// Các biến nội bộ chỉ dùng trong file gps.c
-//static UART_HandleTypeDef *gps_huart;
-//uint8_t rx_byte;
-//char gps_buffer[100];
-//static uint16_t rx_index = 0;
-//volatile uint8_t gps_ready = 0;
-//
-//// Khởi tạo GPS và mồi ngắt nhận byte đầu tiên
-//void GPS_Init(UART_HandleTypeDef *huart) {
-//	gps_huart = huart;
-//	HAL_UART_Receive_IT(gps_huart, &rx_byte, 1);
-//}
-//
-//// Hàm chuyển đổi định dạng NMEA (DDMM.MMMM) sang Decimal Degrees (Google Maps)
-//float NMEA_To_DecimalDegrees(float nmea_coord, char dir) {
-//	// 1. Lấy phần nguyên là Độ (Degrees)
-//	// Ví dụ: 1604.03705 / 100 = 16.0403705 -> Ép kiểu (int) = 16
-//	int degrees = (int) (nmea_coord / 100);
-//
-//	// 2. Lấy phần Phút (Minutes)
-//	// Ví dụ: 1604.03705 - (16 * 100) = 04.03705
-//	float minutes = nmea_coord - (degrees * 100);
-//
-//	// 3. Chuyển Phút thành Độ thập phân
-//	float decimal_degrees = degrees + (minutes / 60.0f);
-//
-//	// 4. Xử lý dấu âm/dương (Nam và Tây là số âm)
-//	if (dir == 'S' || dir == 'W') {
-//		decimal_degrees = -decimal_degrees;
-//	}
-//
-//	return decimal_degrees;
-//}
-//
-//// Hàm nội bộ bóc tách chuỗi theo dấu phẩy
-//static void get_field(char *sentence, int field_num, char *output) {
-//	int current_field = 0;
-//	int i = 0, j = 0;
-//
-//	while (sentence[i] != '\0' && sentence[i] != '*') {
-//		if (sentence[i] == ',') {
-//			current_field++;
-//			i++;
-//			continue;
-//		}
-//		if (current_field == field_num) {
-//			output[j++] = sentence[i];
-//		}
-//		if (current_field > field_num) {
-//			break;
-//		}
-//		i++;
-//	}
-//	output[j] = '\0';
-//}
-//
-//void GPS_UART_RxCallback(UART_HandleTypeDef *huart) {
-//    if (huart->Instance == gps_huart->Instance) {
-//        // Bỏ qua ký tự \r, chỉ xử lý khi gặp \n
-//        if (rx_byte != '\n') {
-//            if (rx_byte != '\r') {
-//                gps_buffer[rx_index++] = rx_byte;
-//                // Chống tràn buffer
-//                if (rx_index >= 100) rx_index = 0;
-//            }
-//        } else {
-//            gps_buffer[rx_index] = '\0'; // Đóng chuỗi
-//            gps_ready = 1;               // Cắm cờ báo hiệu đã nhận xong 1 dòng
-//            rx_index = 0;                // Reset để nhận dòng mới
-//        }
-//        // Mồi lại ngắt để nhận byte tiếp theo
-//        HAL_UART_Receive_IT(gps_huart, &rx_byte, 1);
-//    }
-//}
-//
-//void GPS_Process(GPS_Data_t *myGPS) {
-//    if (gps_ready == 1) {
-//        // Kiểm tra xem là GPGGA hay GNGGA
-//        if (strncmp(gps_buffer, "$GPGGA", 6) == 0 || strncmp(gps_buffer, "$GNGGA", 6) == 0) {
-//            char tempBuf[20];
-//            float raw_lat = 0.0f;
-//            float raw_lon = 0.0f;
-//
-//            // 1. LẤY VĨ ĐỘ (Trường số 2 và 3)
-//            get_field(gps_buffer, 2, tempBuf);
-//            if (tempBuf[0] != '\0') raw_lat = atof(tempBuf);
-//
-//            get_field(gps_buffer, 3, tempBuf);
-//            if (tempBuf[0] != '\0') myGPS->lat_dir = tempBuf[0];
-//
-//            // 2. LẤY KINH ĐỘ (Trường số 4 và 5)
-//            get_field(gps_buffer, 4, tempBuf);
-//            if (tempBuf[0] != '\0') raw_lon = atof(tempBuf);
-//
-//            get_field(gps_buffer, 5, tempBuf);
-//            if (tempBuf[0] != '\0') myGPS->lon_dir = tempBuf[0];
-//
-//            // 3. LẤY CHẤT LƯỢNG TÍN HIỆU VÀ SỐ VỆ TINH (Trường 6 và 7)
-//            get_field(gps_buffer, 6, tempBuf);
-//            if (tempBuf[0] != '\0') myGPS->fix_quality = atoi(tempBuf);
-//
-//            get_field(gps_buffer, 7, tempBuf);
-//            if (tempBuf[0] != '\0') myGPS->satellites = atoi(tempBuf);
-//
-//            // 4. LẤY ĐỘ CAO (Trường số 9)
-//            get_field(gps_buffer, 9, tempBuf);
-//            if (tempBuf[0] != '\0') myGPS->altitude = atof(tempBuf);
-//
-//            // 5. CHUYỂN ĐỔI VÀ GÁN VÀO ĐÚNG BIẾN
-//            if (raw_lat != 0.0f && raw_lon != 0.0f && myGPS->fix_quality > 0) {
-//                myGPS->latitude = NMEA_To_DecimalDegrees(raw_lat, myGPS->lat_dir);
-//                myGPS->longitude = NMEA_To_DecimalDegrees(raw_lon, myGPS->lon_dir);
-//
-//                // Cắm cờ ready lên 1 để báo cho main() biết có tọa độ hợp lệ mới
-//                myGPS->ready = 1;
-//            }
-//        }
-//
-//        // Hạ cờ ngắt của UART
-//        gps_ready = 0;
-//    }
-//}
-
-
 #include "gps.h"
 #include <string.h>
-#include <stdlib.h>
 
 static UART_HandleTypeDef *gps_huart;
 
 // Buffer nhận thô trực tiếp từ GPDMA
+// Lưu ý: Đổi sang uint8_t vì UBX là dữ liệu nhị phân (chứa 0x00)
 uint8_t rx_dma_buffer[GPS_DMA_BUF_SIZE];
 
 // Buffer chính (chứa dữ liệu đã copy an toàn để xử lý)
-char main_gps_buffer[GPS_DMA_BUF_SIZE];
+uint8_t main_gps_buffer[GPS_DMA_BUF_SIZE];
 
 volatile uint8_t gps_data_ready = 0;
 volatile uint16_t gps_data_len = 0;
 
 // Khởi tạo và "Mồi" DMA lần đầu tiên
 void GPS_Init_DMA(UART_HandleTypeDef *huart) {
-    gps_huart = huart;
-    memset(rx_dma_buffer, 0, GPS_DMA_BUF_SIZE);
+	gps_huart = huart;
+	memset(rx_dma_buffer, 0, GPS_DMA_BUF_SIZE);
 
-    // Bật DMA nhận dữ liệu kết hợp ngắt IDLE Line
-    HAL_UARTEx_ReceiveToIdle_DMA(gps_huart, rx_dma_buffer, GPS_DMA_BUF_SIZE);
+	// Bật DMA nhận dữ liệu kết hợp ngắt IDLE Line
+	HAL_UARTEx_ReceiveToIdle_DMA(gps_huart, rx_dma_buffer, GPS_DMA_BUF_SIZE);
 }
 
-// Hàm này sẽ được gọi khi xảy ra ngắt IDLE (nhận xong 1 câu lệnh)
+// Hàm này sẽ được gọi khi xảy ra ngắt IDLE (nhận xong 1 block dữ liệu)
 void GPS_UART_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size) {
-    if (huart->Instance == gps_huart->Instance) {
-        if (Size > 0 && Size < GPS_DMA_BUF_SIZE) {
-            // Copy nhanh dữ liệu từ DMA sang buffer chính để tránh bị đè
-            memcpy(main_gps_buffer, (char*)rx_dma_buffer, Size);
-            main_gps_buffer[Size] = '\0'; // Đóng chuỗi String
+	if (huart->Instance == gps_huart->Instance) {
+		if (Size > 0 && Size <= GPS_DMA_BUF_SIZE) {
+			// Copy nhanh dữ liệu từ DMA sang buffer chính để tránh bị đè
+			memcpy(main_gps_buffer, rx_dma_buffer, Size);
+			gps_data_len = Size;
+			gps_data_ready = 1; // Cắm cờ báo cho hàm Main biết đã có chuỗi mới
+		}
 
-            gps_data_ready = 1; // Cắm cờ báo cho hàm Main biết đã có chuỗi mới
-        }
-
-        // QUAN TRỌNG: Mồi lại DMA để nó tiếp tục nhận chuỗi tiếp theo
-        memset(rx_dma_buffer, 0, GPS_DMA_BUF_SIZE);
-        HAL_UARTEx_ReceiveToIdle_DMA(gps_huart, rx_dma_buffer, GPS_DMA_BUF_SIZE);
-    }
+		// QUAN TRỌNG: Mồi lại DMA để nó tiếp tục nhận block tiếp theo
+		HAL_UARTEx_ReceiveToIdle_DMA(gps_huart, rx_dma_buffer,
+				GPS_DMA_BUF_SIZE);
+	}
 }
 
-// Hàm nội bộ bóc tách chuỗi theo dấu phẩy
-static void get_field(char *sentence, int field_num, char *output) {
-    int current_field = 0;
-    int i = 0, j = 0;
+void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart) {
+	// Kiểm tra xem lỗi có xuất phát từ UART của GPS không
+	if (huart->Instance == gps_huart->Instance) {
+		// Hủy quá trình nhận hiện tại để dọn dẹp cờ lỗi
+		HAL_UART_AbortReceive(huart);
 
-    while (sentence[i] != '\0' && sentence[i] != '*') {
-        if (sentence[i] == ',') {
-            current_field++;
-            i++;
-            continue;
-        }
-        if (current_field == field_num) {
-            output[j++] = sentence[i];
-        }
-        if (current_field > field_num) {
-            break;
-        }
-        i++;
-    }
-    output[j] = '\0';
+		// Quan trọng: Mồi lại DMA để tiếp tục bắt tín hiệu
+		HAL_UARTEx_ReceiveToIdle_DMA(gps_huart, rx_dma_buffer,
+				GPS_DMA_BUF_SIZE);
+	}
 }
-// Hàm chuyển đổi NMEA sang Decimal Degrees (Đã cập nhật dùng double)
-double NMEA_To_DecimalDegrees(double nmea_coord, char dir) {
-    int degrees = (int) (nmea_coord / 100.0);
-    double minutes = nmea_coord - (degrees * 100.0);
-    double decimal_degrees = degrees + (minutes / 60.0);
 
-    if (dir == 'S' || dir == 'W') {
-        decimal_degrees = -decimal_degrees;
-    }
-    return decimal_degrees;
+// =========================================================
+// MÁY TRẠNG THÁI (STATE MACHINE) XỬ LÝ UBX
+// =========================================================
+
+#define UBX_NAV_PVT_CLASS   0x01
+#define UBX_NAV_PVT_ID      0x07
+#define UBX_NAV_PVT_LENGTH  92
+
+static uint8_t ubx_payload[92];
+static uint8_t ubx_state = 0;
+static uint8_t ubx_class;
+static uint8_t ubx_id;
+static uint16_t ubx_length;
+static uint16_t ubx_index;
+static uint8_t ubx_ck_a;
+static uint8_t ubx_ck_b;
+static uint8_t ubx_rx_ck_a;
+static uint8_t ubx_rx_ck_b;
+
+static uint16_t UBX_U16(const uint8_t *p) {
+	return ((uint16_t) p[0]) | ((uint16_t) p[1] << 8);
+}
+
+static uint32_t UBX_U32(const uint8_t *p) {
+	return ((uint32_t) p[0]) | ((uint32_t) p[1] << 8) | ((uint32_t) p[2] << 16)
+			| ((uint32_t) p[3] << 24);
+}
+
+static int32_t UBX_I32(const uint8_t *p) {
+	return (int32_t) UBX_U32(p);
+}
+
+static void UBX_Checksum(uint8_t *data, uint16_t len, uint8_t *ck_a,
+		uint8_t *ck_b) {
+	uint8_t a = 0, b = 0;
+	for (uint16_t i = 0; i < len; i++) {
+		a = a + data[i];
+		b = b + a;
+	}
+	*ck_a = a;
+	*ck_b = b;
+}
+
+static void GPS_UBX_ParseByte(uint8_t c, GPS_Data_t *myGPS) {
+	switch (ubx_state) {
+	case 0:
+		if (c == 0xB5)
+			ubx_state = 1;
+		break;
+	case 1:
+		if (c == 0x62)
+			ubx_state = 2;
+		else if (c == 0xB5)
+			ubx_state = 1;
+		else
+			ubx_state = 0;
+		break;
+	case 2:
+		ubx_class = c;
+		if (ubx_class == UBX_NAV_PVT_CLASS)
+			ubx_state = 3;
+		else
+			ubx_state = 0;
+		break;
+	case 3:
+		ubx_id = c;
+		if (ubx_id == UBX_NAV_PVT_ID)
+			ubx_state = 4;
+		else
+			ubx_state = 0;
+		break;
+	case 4:
+		ubx_length = c;
+		ubx_state = 5;
+		break;
+	case 5:
+		ubx_length |= ((uint16_t) c << 8);
+		if (ubx_length == UBX_NAV_PVT_LENGTH) {
+			ubx_index = 0;
+			ubx_state = 6;
+		} else
+			ubx_state = 0;
+		break;
+	case 6:
+		ubx_payload[ubx_index++] = c;
+		if (ubx_index >= ubx_length)
+			ubx_state = 7;
+		break;
+	case 7:
+		ubx_rx_ck_a = c;
+		ubx_state = 8;
+		break;
+	case 8:
+		ubx_rx_ck_b = c;
+		// Tính checksum
+		{
+			uint8_t data[96];
+			data[0] = ubx_class;
+			data[1] = ubx_id;
+			data[2] = (uint8_t) (ubx_length & 0xFF);
+			data[3] = (uint8_t) (ubx_length >> 8);
+			for (uint16_t i = 0; i < ubx_length; i++)
+				data[4 + i] = ubx_payload[i];
+
+			UBX_Checksum(data, 4 + ubx_length, &ubx_ck_a, &ubx_ck_b);
+
+			if ((ubx_ck_a == ubx_rx_ck_a) && (ubx_ck_b == ubx_rx_ck_b)) {
+				// Checksum đúng, parse dữ liệu
+				uint8_t *p = ubx_payload;
+				myGPS->iTOW = UBX_U32(&p[0]);
+				myGPS->year = UBX_U16(&p[4]);
+				myGPS->month = p[6];
+				myGPS->day = p[7];
+				myGPS->hour = p[8];
+				myGPS->min = p[9];
+				myGPS->sec = p[10];
+				myGPS->valid = p[11];
+				myGPS->fixType = p[20];
+				myGPS->numSV = p[23];
+				myGPS->lon = UBX_I32(&p[24]);
+				myGPS->lat = UBX_I32(&p[28]);
+				myGPS->height = UBX_I32(&p[32]);
+				myGPS->hMSL = UBX_I32(&p[36]);
+				myGPS->hAcc = UBX_U32(&p[40]);
+				myGPS->vAcc = UBX_U32(&p[44]);
+				myGPS->velN = UBX_I32(&p[48]);
+				myGPS->velE = UBX_I32(&p[52]);
+				myGPS->velD = UBX_I32(&p[56]);
+				myGPS->gSpeed = UBX_I32(&p[60]);
+				myGPS->sAcc = UBX_U32(&p[68]);
+				myGPS->pDOP = UBX_U16(&p[76]);
+
+				// Chuyển đổi sang chuẩn Decimal Degrees cho Drone EKF
+				myGPS->latitude = (double) myGPS->lat / 1e7;
+				myGPS->longitude = (double) myGPS->lon / 1e7;
+				myGPS->altitude = (float) myGPS->hMSL / 1000.0f; // Đổi mm ra m
+
+				if (myGPS->fixType >= 3) {
+					myGPS->ready = 1; // Tọa độ 3D Fix đã sẵn sàng
+				}
+			}
+		}
+		ubx_state = 0;
+		break;
+	default:
+		ubx_state = 0;
+		break;
+	}
 }
 
 // Hàm xử lý chính gọi trong vòng lặp while(1)
 void GPS_Process(GPS_Data_t *myGPS) {
-    if (gps_data_ready == 1) {
+	if (gps_data_ready == 1) {
 
-        // 1. Tìm con trỏ (vị trí) bắt đầu của chuỗi GPGGA hoặc GNGGA trong mảng
-        char *gga_ptr = strstr(main_gps_buffer, "$GPGGA");
-        if (gga_ptr == NULL) {
-            gga_ptr = strstr(main_gps_buffer, "$GNGGA");
-        }
+		// Quét toàn bộ buffer nhận được và đưa từng byte vào State Machine
+		for (uint16_t i = 0; i < gps_data_len; i++) {
+			GPS_UBX_ParseByte(main_gps_buffer[i], myGPS);
+		}
 
-        // 2. Nếu tìm thấy chuỗi GGA trong mảng
-        if (gga_ptr != NULL) {
-            char tempBuf[20];
-            double raw_lat = 0.0, raw_lon = 0.0;
-
-            // LƯU Ý: Truyền con trỏ gga_ptr vào hàm get_field thay vì main_gps_buffer
-
-            get_field(gga_ptr, 2, tempBuf);
-            if (tempBuf[0] != '\0') raw_lat = strtod(tempBuf, NULL); // Dùng strtod cho double
-
-            get_field(gga_ptr, 3, tempBuf);
-            if (tempBuf[0] != '\0') myGPS->lat_dir = tempBuf[0];
-
-            get_field(gga_ptr, 4, tempBuf);
-            if (tempBuf[0] != '\0') raw_lon = strtod(tempBuf, NULL); // Dùng strtod cho double
-
-            get_field(gga_ptr, 5, tempBuf);
-            if (tempBuf[0] != '\0') myGPS->lon_dir = tempBuf[0];
-
-            get_field(gga_ptr, 6, tempBuf);
-            if (tempBuf[0] != '\0') myGPS->fix_quality = atoi(tempBuf);
-
-            get_field(gga_ptr, 7, tempBuf);
-            if (tempBuf[0] != '\0') myGPS->satellites = atoi(tempBuf);
-
-            get_field(gga_ptr, 9, tempBuf);
-            if (tempBuf[0] != '\0') myGPS->altitude = atof(tempBuf); // Độ cao dùng float vẫn ổn
-
-            // Cập nhật tọa độ nếu GPS có tín hiệu vệ tinh
-            if (raw_lat != 0.0 && raw_lon != 0.0 && myGPS->fix_quality > 0) {
-                myGPS->latitude = NMEA_To_DecimalDegrees(raw_lat, myGPS->lat_dir);
-                myGPS->longitude = NMEA_To_DecimalDegrees(raw_lon, myGPS->lon_dir);
-                myGPS->ready = 1; // Tọa độ đã sẵn sàng đưa vào EKF/PID
-            }
-        }
-
-        gps_data_ready = 0; // Hạ cờ sau khi xử lý xong toàn bộ cụm buffer
-    }
+		gps_data_ready = 0; // Hạ cờ sau khi xử lý xong toàn bộ cụm buffer
+	}
 }
 
-void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart) {
-    // Kiểm tra xem lỗi có xuất phát từ UART của GPS không
-    if (huart->Instance == gps_huart->Instance) {
-        // Hủy quá trình nhận hiện tại để dọn dẹp cờ lỗi
-        HAL_UART_AbortReceive(huart);
-
-        // Quan trọng: Mồi lại DMA để tiếp tục bắt tín hiệu
-        HAL_UARTEx_ReceiveToIdle_DMA(gps_huart, rx_dma_buffer, GPS_DMA_BUF_SIZE);
-    }
-}
