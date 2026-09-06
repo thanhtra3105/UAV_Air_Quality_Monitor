@@ -31,4 +31,7 @@ typedef struct {
 uint8_t DSP310_Init(DSP310_t *dev, I2C_HandleTypeDef *hi2c);
 void DSP310_ReadData(DSP310_t *dev); // Hàm mới thay thế cho việc gọi lẻ tẻ
 uint8_t DSP310_Read(DSP310_t *dev);
+void DSP310_DeInit(DSP310_t *dev);
+void DSP310_I2C_MemRxCpltCallback(I2C_HandleTypeDef *hi2c);
+void DSP310_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c);
 #endif /* INC_DSP310_H_ */

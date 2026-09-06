@@ -1,3 +1,5 @@
 ../Core/Src/ina219.c:10:6:INA219_Init	1
 ../Core/Src/ina219.c:24:7:INA219_Read	2
 ../Core/Src/ina219.c:37:7:INA219_Read_Bus_Voltage	2
+../Core/Src/ina219.c:63:6:INA219_TriggerRead_IT	1
+../Core/Src/ina219.c:68:7:INA219_ProcessData_IT	1

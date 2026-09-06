@@ -34,8 +34,8 @@ typedef struct {
 } Kalman3D_t;
 
 typedef struct {
-    float altitude;
-    float velocity;
+    float altitude;		// cm
+    float velocity;		// cm/s
     float acc_bias;
     float baro_bias;
     float P[4][4];

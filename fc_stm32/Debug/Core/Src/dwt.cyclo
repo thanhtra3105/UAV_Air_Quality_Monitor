@@ -1,3 +1,3 @@
 ../Core/Src/dwt.c:7:6:DWT_Init	1
-../Core/Src/dwt.c:18:10:DWT_GetMicros	1
-../Core/Src/dwt.c:23:7:DWT_GetDeltaTime	1
+../Core/Src/dwt.c:17:10:DWT_GetMicros	1
+../Core/Src/dwt.c:34:7:DWT_GetDeltaTime	1

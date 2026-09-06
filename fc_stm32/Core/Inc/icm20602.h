@@ -18,7 +18,7 @@ extern SPI_HandleTypeDef hspi1;
 #define PWR_MGMT_2      0x6C
 
 #define SMPLRT_DIV      0x19
-#define CONFIG          0x1A
+#define ICM_CONFIG          0x1A
 #define GYRO_CONFIG     0x1B
 #define ACCEL_CONFIG    0x1C
 #define ACCEL_CONFIG2   0x1D

@@ -120,7 +120,7 @@ void ICM20602_Init(void)
     ICM20602_WriteReg(SMPLRT_DIV,0);
 
     /* DLPF */
-    ICM20602_WriteReg(CONFIG,0x03);
+    ICM20602_WriteReg(ICM_CONFIG,0x03);
 
     /* Gyro ±2000dps */
     ICM20602_WriteReg(GYRO_CONFIG,0x18);
