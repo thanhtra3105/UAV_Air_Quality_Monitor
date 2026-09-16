@@ -60,8 +60,7 @@ static uint8_t address[5] = { '0', '0', '0', '0', '1' };
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-//#define USE_QMC5883
-#define USE_IST8310
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -196,10 +195,10 @@ int main(void) {
 	MX_SPI2_Init();
 	/* USER CODE BEGIN 2 */
 
-//	HAL_SPI_Init(&hspi1);
-////	HAL_SPI_Init(&hspi2);
-//	HAL_I2C_Init(&hi2c1);
-//	HAL_I2C_Init(&hi2c2);
+	HAL_SPI_Init(&hspi1);
+	HAL_SPI_Init(&hspi2);
+	HAL_I2C_Init(&hi2c1);
+	HAL_I2C_Init(&hi2c2);
 	FlightController_Init();
 //	HAL_SPI_Init(&hspi1);
 //	HAL_SPI_Init(&hspi2);
@@ -221,12 +220,12 @@ int main(void) {
 		/* USER CODE END WHILE */
 
 		/* USER CODE BEGIN 3 */
-//		FlightController_Run();
+		FlightController_Run();
 //		if(NRF24_Available())
 //		{
 //			Serial_printf(&huart1, "hihi\r\n");
 //		}
-		RC_Process(&g_veh);
+//		RC_Process(&g_veh);
 	}
 	/* USER CODE END 3 */
 }

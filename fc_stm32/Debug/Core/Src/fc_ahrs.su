@@ -1,0 +1,8 @@
+../Core/Inc/fc_state.h:173:21:angle_diff_deg	24	static
+../Core/Src/fc_ahrs.c:25:14:DSP_CalibrationAltitude	24	static
+../Core/Src/fc_ahrs.c:37:6:AHRS_Calibrate	16	static
+../Core/Src/fc_ahrs.c:48:6:AHRS_Init	32	static
+../Core/Src/fc_ahrs.c:82:6:AHRS_ReadIMU	16	static
+../Core/Src/fc_ahrs.c:95:14:computeHeading	72	static
+../Core/Src/fc_ahrs.c:110:7:AHRS_ReadHeading	16	static
+../Core/Src/fc_ahrs.c:123:6:AHRS_UpdateAttitude	56	static

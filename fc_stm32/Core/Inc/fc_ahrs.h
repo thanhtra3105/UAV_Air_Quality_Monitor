@@ -18,8 +18,8 @@ extern "C" {
 #include "kalman.h"
 
 // Choose magnetometer
-#define USE_IST8310
-//#define USE_QMC5883
+//#define USE_IST8310
+#define USE_QMC5883
 
 extern ICM20602_t    imu;
 extern DSP310_t      dsp_sensor;

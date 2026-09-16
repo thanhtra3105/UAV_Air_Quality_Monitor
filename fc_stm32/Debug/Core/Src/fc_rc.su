@@ -1,0 +1,5 @@
+../Core/Inc/fc_state.h:169:20:map_val	24	static
+../Core/Src/fc_rc.c:17:6:RC_Init	8	static
+../Core/Src/fc_rc.c:29:6:RC_WaitForZeroThrottle	24	static
+../Core/Src/fc_rc.c:46:6:RC_Failsafe	24	static
+../Core/Src/fc_rc.c:68:6:RC_Process	32	static

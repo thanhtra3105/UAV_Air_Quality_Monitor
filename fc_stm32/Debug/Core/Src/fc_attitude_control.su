@@ -1,0 +1,6 @@
+../Core/Inc/fc_state.h:163:21:constrain_f	24	static
+../Core/Inc/fc_state.h:173:21:angle_diff_deg	24	static
+../Core/Src/fc_attitude_control.c:22:6:AttitudeControl_Init	8	static
+../Core/Src/fc_attitude_control.c:34:6:AttitudeControl_ResetAll	8	static
+../Core/Src/fc_attitude_control.c:41:6:AttitudeControl_AngleLoop	32	static
+../Core/Src/fc_attitude_control.c:60:6:AttitudeControl_RateLoop	32	static

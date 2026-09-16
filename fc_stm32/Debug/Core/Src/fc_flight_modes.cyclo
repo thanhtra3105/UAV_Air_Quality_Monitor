@@ -1,0 +1,9 @@
+../Core/Inc/fc_state.h:163:21:constrain_f	3
+../Core/Src/fc_flight_modes.c:22:6:FlightModes_Init	1
+../Core/Src/fc_flight_modes.c:37:6:Run_XY_Controller	2
+../Core/Src/fc_flight_modes.c:76:6:Mode_AltHold_Update	2
+../Core/Src/fc_flight_modes.c:101:6:Mode_GPS_PositionHold_Update	8
+../Core/Src/fc_flight_modes.c:179:6:Mode_AutoTakeoff	8
+../Core/Src/fc_flight_modes.c:223:6:Mode_AutoLanding	6
+../Core/Src/fc_flight_modes.c:270:13:FlightModes_CheckSwitch	10
+../Core/Src/fc_flight_modes.c:295:6:FlightModes_Update	15

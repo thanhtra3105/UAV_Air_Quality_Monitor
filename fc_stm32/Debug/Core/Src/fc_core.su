@@ -1,0 +1,2 @@
+../Core/Src/fc_core.c:20:6:FlightController_Init	8	static
+../Core/Src/fc_core.c:48:6:FlightController_Run	24	static

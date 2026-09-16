@@ -1,0 +1,4 @@
+../Core/Src/fc_motors.c:11:6:Motors_Init	8	static
+../Core/Src/fc_motors.c:21:6:Motors_Write	16	static
+../Core/Src/fc_motors.c:25:6:Motors_DisarmAll	8	static
+../Core/Src/fc_motors.c:32:6:Motors_Mixer	56	static

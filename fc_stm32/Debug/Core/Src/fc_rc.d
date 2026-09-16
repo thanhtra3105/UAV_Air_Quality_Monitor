@@ -1,4 +1,5 @@
-Core/Src/main.o: ../Core/Src/main.c ../Core/Inc/main.h \
+Core/Src/fc_rc.o: ../Core/Src/fc_rc.c ../Core/Inc/fc_rc.h \
+ ../Core/Inc/fc_state.h ../Core/Inc/main.h \
  ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal.h \
  ../Core/Inc/stm32h5xx_hal_conf.h \
  ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal_rcc.h \
@@ -32,16 +33,10 @@ Core/Src/main.o: ../Core/Src/main.c ../Core/Inc/main.h \
  ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal_uart.h \
  ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal_uart_ex.h \
  ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal_exti.h \
- ../Core/Inc/types.h ../Core/Inc/fc_core.h ../Core/Inc/fc_state.h \
- ../Core/Inc/main.h ../Core/Inc/fc_motors.h ../Core/Inc/fc_rc.h \
- ../Core/Inc/fc_telemetry.h ../Core/Inc/fc_ahrs.h ../Core/Inc/icm20602.h \
- ../Core/Inc/dsp310.h ../Core/Inc/ist8310.h ../Core/Inc/qmc5883.h \
- ../Core/Inc/kalman.h ../Core/Inc/fc_pos_estimator.h \
- ../Core/Inc/kalman_gps.h ../Core/Inc/mtf01.h ../Core/Inc/gps.h \
- ../Core/Inc/fc_attitude_control.h ../Core/Inc/pid_controller.h \
- ../Core/Inc/fc_flight_modes.h ../Core/Inc/mission.h \
- ../Core/Src/uart_cmd.h ../Core/Inc/mtf01.h ../Core/Inc/gps.h \
- ../Core/Inc/dsp310.h ../Core/Inc/mission.h ../Core/Inc/nrf.h
+ ../Core/Inc/types.h ../Core/Inc/nrf.h ../Core/Inc/gps.h \
+ ../Core/Src/serial.h
+../Core/Inc/fc_rc.h:
+../Core/Inc/fc_state.h:
 ../Core/Inc/main.h:
 ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal.h:
 ../Core/Inc/stm32h5xx_hal_conf.h:
@@ -77,29 +72,6 @@ Core/Src/main.o: ../Core/Src/main.c ../Core/Inc/main.h \
 ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal_uart_ex.h:
 ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal_exti.h:
 ../Core/Inc/types.h:
-../Core/Inc/fc_core.h:
-../Core/Inc/fc_state.h:
-../Core/Inc/main.h:
-../Core/Inc/fc_motors.h:
-../Core/Inc/fc_rc.h:
-../Core/Inc/fc_telemetry.h:
-../Core/Inc/fc_ahrs.h:
-../Core/Inc/icm20602.h:
-../Core/Inc/dsp310.h:
-../Core/Inc/ist8310.h:
-../Core/Inc/qmc5883.h:
-../Core/Inc/kalman.h:
-../Core/Inc/fc_pos_estimator.h:
-../Core/Inc/kalman_gps.h:
-../Core/Inc/mtf01.h:
-../Core/Inc/gps.h:
-../Core/Inc/fc_attitude_control.h:
-../Core/Inc/pid_controller.h:
-../Core/Inc/fc_flight_modes.h:
-../Core/Inc/mission.h:
-../Core/Src/uart_cmd.h:
-../Core/Inc/mtf01.h:
-../Core/Inc/gps.h:
-../Core/Inc/dsp310.h:
-../Core/Inc/mission.h:
 ../Core/Inc/nrf.h:
+../Core/Inc/gps.h:
+../Core/Src/serial.h:

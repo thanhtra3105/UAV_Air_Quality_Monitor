@@ -1,0 +1,4 @@
+../Core/Src/fc_telemetry.c:16:6:Telemetry_Init	1
+../Core/Src/fc_telemetry.c:20:6:Telemetry_UpdateBattery	3
+../Core/Src/fc_telemetry.c:30:6:Telemetry_SendESP32	2
+../Core/Src/fc_telemetry.c:39:6:Telemetry_UpdateLEDs	5
