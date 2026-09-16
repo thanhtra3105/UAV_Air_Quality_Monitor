@@ -61,9 +61,9 @@ typedef struct {
 
 // Khai báo hàm
 void MTF01_Init(UART_HandleTypeDef *huart);
-void MTF01_Process(UART_HandleTypeDef *huart);
+void MTF01_UART_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size);
 uint8_t MTF01_Update(MTF01_t *mtf);
-
+void MTF01_UART_ErrorCallback(UART_HandleTypeDef *huart);
 #endif /* INC_MTF01_H_ */
 
 

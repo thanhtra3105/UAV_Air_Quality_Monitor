@@ -101,6 +101,7 @@ UART_HandleTypeDef huart2;
 DMA_HandleTypeDef handle_GPDMA1_Channel1;
 DMA_HandleTypeDef handle_GPDMA2_Channel1;
 DMA_HandleTypeDef handle_GPDMA1_Channel0;
+DMA_HandleTypeDef handle_GPDMA1_Channel2;
 
 /* USER CODE BEGIN PV */
 
@@ -369,9 +370,9 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 //		GPS_UART_RxCallback(&huart1);
 	}
 
-	if (huart->Instance == USART2) {
-		MTF01_Process(&huart2);
-	}
+//	if (huart->Instance == USART2) {
+//		MTF01_Process(&huart2);
+//	}
 
 //	GPS_UART_RxCallback(&huart1);
 //	if (huart->Instance == USART1) {
@@ -395,6 +396,10 @@ int counttt = 0;
 void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size) {
 	// Đẩy sự kiện sang cho hàm xử lý của ta bên file gps.c
 	GPS_UART_RxEventCallback(huart, Size);
+	if (huart->Instance == USART2) {
+		MTF01_UART_RxEventCallback(huart, Size);
+	}
+
 	if (huart->Instance == UART7) // Đã chuyển sang UART7
 	{
 		counttt++;
@@ -405,6 +410,13 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size) {
 		HAL_UARTEx_ReceiveToIdle_DMA(&huart7, rx_mission_buffer,
 		MISSION_BUFFER_SIZE);
 	}
+}
+
+
+void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart) {
+	// Kiểm tra xem lỗi có xuất phát từ UART của GPS không
+	GPS_UART_ErrorCallback(huart);
+	MTF01_UART_ErrorCallback(huart);
 }
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
@@ -1111,7 +1123,7 @@ void Mode_AutoTakeoff(float dt) {
 }
 
 void Mode_AutoLanding(float dt) {
-	if(!landing_active) {
+	if (!landing_active) {
 		target_x = est_x;
 		target_y = est_y;
 
@@ -1413,7 +1425,7 @@ void calcualatePIDRate(float dt_rate) {
 
 int sp1, sp2, sp3, sp4;
 void mixer() {
-	int m1 = (int) (float) throttle - pid_p - pid_r - pid_y + pid_alt ;
+	int m1 = (int) (float) throttle - pid_p - pid_r - pid_y + pid_alt;
 	int m2 = (int) (float) throttle + pid_p - pid_r + pid_y + pid_alt;
 	int m3 = (int) (float) throttle + pid_p + pid_r - pid_y + pid_alt;
 	int m4 = (int) (float) throttle - pid_p + pid_r + pid_y + pid_alt;
@@ -1670,6 +1682,7 @@ int main(void) {
 			PID_Reset(&PID_Angle);
 		}
 		mtf01_updated = MTF01_Update(&mtf_data);
+
 		GPS_Process(&gps);
 //		if (Mission_IsReady()) {
 ////			char tx_buf[30];
@@ -1678,7 +1691,8 @@ int main(void) {
 //		}
 		readIMU();
 		calculateAngle(dt);
-		Estimate_Position_GPS_Kalman(dt);
+//		Estimate_Position_GPS_Kalman(dt);
+		Estimate_Position(dt);
 		PID_Task(dt);
 		mixer();
 		if (DWT_GetMicros() - ina219_timer > 500000) {
@@ -1791,6 +1805,8 @@ static void MX_GPDMA1_Init(void) {
 	HAL_NVIC_EnableIRQ(GPDMA1_Channel0_IRQn);
 	HAL_NVIC_SetPriority(GPDMA1_Channel1_IRQn, 0, 0);
 	HAL_NVIC_EnableIRQ(GPDMA1_Channel1_IRQn);
+	HAL_NVIC_SetPriority(GPDMA1_Channel2_IRQn, 0, 0);
+	HAL_NVIC_EnableIRQ(GPDMA1_Channel2_IRQn);
 
 	/* USER CODE BEGIN GPDMA1_Init 1 */
 
