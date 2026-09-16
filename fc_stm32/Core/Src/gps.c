@@ -34,7 +34,7 @@ void GPS_UART_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size) {
 
 		// QUAN TRỌNG: Mồi lại DMA để nó tiếp tục nhận block tiếp theo
 		HAL_UARTEx_ReceiveToIdle_DMA(gps_huart, rx_dma_buffer,
-				GPS_DMA_BUF_SIZE);
+		GPS_DMA_BUF_SIZE);
 	}
 }
 
@@ -46,7 +46,13 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart) {
 
 		// Quan trọng: Mồi lại DMA để tiếp tục bắt tín hiệu
 		HAL_UARTEx_ReceiveToIdle_DMA(gps_huart, rx_dma_buffer,
-				GPS_DMA_BUF_SIZE);
+		GPS_DMA_BUF_SIZE);
+	}
+	if (huart->Instance == USART2) {
+		__HAL_UART_CLEAR_OREFLAG(huart);
+		HAL_UART_AbortReceive(huart);
+		extern uint8_t uart_rx_mtf01;
+		HAL_UART_Receive_IT(huart, &uart_rx_mtf01, 1);
 	}
 }
 

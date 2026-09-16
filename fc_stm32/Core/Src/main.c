@@ -118,9 +118,9 @@ static void MX_SPI2_Init(void);
 extern uint8_t rx_mission_buffer[MISSION_BUFFER_SIZE];
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
-	if (huart->Instance == UART7) {
-		UART_CMD_Process(&huart7);
-	}
+//	if (huart->Instance == UART7) {
+//		UART_CMD_Process(&huart7);
+//	}
 
 	if (huart->Instance == USART2) {
 		MTF01_Process(&huart2);
@@ -200,17 +200,7 @@ int main(void) {
 	HAL_I2C_Init(&hi2c1);
 	HAL_I2C_Init(&hi2c2);
 	FlightController_Init();
-//	HAL_SPI_Init(&hspi1);
-//	HAL_SPI_Init(&hspi2);
-//	ICM_CS_HIGH();
-//	NRF_CSN_HIGH();
-//	HAL_Delay(10);
-//
-//	NRF24_Init();
-//	NRF24_OpenReadingPipe(0, address);
-//	NRF24_StartListening();
-//
-//	HAL_Delay(500);
+
 
 	/* USER CODE END 2 */
 
@@ -221,11 +211,7 @@ int main(void) {
 
 		/* USER CODE BEGIN 3 */
 		FlightController_Run();
-//		if(NRF24_Available())
-//		{
-//			Serial_printf(&huart1, "hihi\r\n");
-//		}
-//		RC_Process(&g_veh);
+
 	}
 	/* USER CODE END 3 */
 }
