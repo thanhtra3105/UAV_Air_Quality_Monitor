@@ -73,8 +73,8 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-//#define USE_QMC5883
-#define USE_IST8310
+#define USE_QMC5883
+//#define USE_IST8310
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
