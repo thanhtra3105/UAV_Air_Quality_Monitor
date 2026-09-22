@@ -78,8 +78,7 @@ void AttitudeControl_RateLoop(VehicleState_t *veh, float dt) {
     // Altitude rate / velocity inner loop
     if (veh->alt_hold_active) {
         float vz_err = veh->target_vz - veh->est_vz;
-        veh->pid_alt_vel_out = PID_Calculate(&PID_Alt_Vel, vz_err, dt);
-        veh->pid_alt = veh->pid_alt_vel_out;
+        veh->pid_alt = PID_Calculate(&PID_Alt_Vel, vz_err, dt);
     } else {
         veh->pid_alt = 0.0f;
         PID_Reset(&PID_Alt_Vel);

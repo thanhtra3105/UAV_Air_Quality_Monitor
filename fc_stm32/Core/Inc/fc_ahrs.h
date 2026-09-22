@@ -16,6 +16,7 @@ extern "C" {
 #include "ist8310.h"
 #include "qmc5883.h"
 #include "kalman.h"
+#include "mtf01.h"
 
 // Choose magnetometer
 //#define USE_IST8310

@@ -1,15 +1,17 @@
 #include "qmc5883.h"
 
-int16_t max_x = -32768;
-int16_t min_x = 32767;
-
-int16_t max_y = -32768;
-int16_t min_y = 32767;
-
-int16_t max_z = -32768;
-int16_t min_z = 32767;
 
 void QMC5883_CalibHardIron(QMC5883_t *mag) {
+
+	int16_t max_x = -32768;
+	int16_t min_x = 32767;
+
+	int16_t max_y = -32768;
+	int16_t min_y = 32767;
+
+	int16_t max_z = -32768;
+	int16_t min_z = 32767;
+
 
 	max_x = 1796;
 	min_x = -1286;

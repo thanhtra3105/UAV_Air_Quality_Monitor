@@ -32,78 +32,6 @@ void Kalman1D_Compute(float KalmanState, float KalmanUncertainty,
 	Kalman1DOutput[1] = KalmanUncertainty;
 }
 
-void Kalman2D_Init(Kalman2D_t *kf, float initial_alt) {
-	kf->altitude = initial_alt;
-	kf->velocity = 0.0f;
-	// Khởi tạo ma trận P như trong hàm kalman_setup() của bạn
-	kf->P[0][0] = 10.0f;
-	kf->P[0][1] = 0.0f;
-	kf->P[1][0] = 0.0f;
-	kf->P[1][1] = 10.0f;
-}
-
-// Bước DỰ ĐOÁN (Predict)
-void Kalman2D_Predict(Kalman2D_t *kf, float acc_z, float dt) {
-	// 1. Cập nhật trạng thái: S = F*S + G*Acc
-	kf->altitude += dt * kf->velocity + 0.5f * dt * dt * acc_z;
-	kf->velocity += dt * acc_z;
-
-	// 2. Cập nhật sai số: P = F*P*F^T + Q
-	float sigma_acc = 10.0f; // cm/s² (từ code gốc của bạn)
-	float var_acc = sigma_acc * sigma_acc;
-
-	float dt2 = dt * dt;
-	float dt3 = dt2 * dt;
-	float dt4 = dt2 * dt2;
-
-	// Tính ma trận Q = G * G^T * var_acc
-	float Q00 = 0.25f * dt4 * var_acc;
-	float Q01 = 0.5f * dt3 * var_acc;
-	float Q11 = dt2 * var_acc;
-
-	// Lưu tạm P để tính toán không bị đè dữ liệu
-	float P00 = kf->P[0][0];
-	float P01 = kf->P[0][1];
-	float P10 = kf->P[1][0];
-	float P11 = kf->P[1][1];
-
-	kf->P[0][0] = P00 + dt * (P01 + P10) + dt2 * P11 + Q00;
-	kf->P[0][1] = P01 + dt * P11 + Q01;
-	kf->P[1][0] = kf->P[0][1]; // Ma trận P luôn đối xứng (P10 = P01)
-	kf->P[1][1] = P11 + Q11;
-}
-
-// Bước CẬP NHẬT (Update)
-void Kalman2D_Update(Kalman2D_t *kf, float alt_measured, float sigma_alt) {
-	// 1. Tính Kalman Gain: K = P * H^T * (H*P*H^T + R)^-1
-	float R = sigma_alt * sigma_alt;
-	float L = kf->P[0][0] + R; // L = H*P*H^T + R
-
-	float K0 = kf->P[0][0] / L;
-	float K1 = kf->P[1][0] / L;
-
-	// 2. Hiệu chỉnh trạng thái: S = S + K * (M - H*S)
-	float y = alt_measured - kf->altitude; // Sai số (Innovation)
-	kf->altitude += K0 * y;
-	kf->velocity += K1 * y;
-
-	// 3. Cập nhật lại sai số hiệp phương sai: P = (I - K*H) * P
-	float P00 = kf->P[0][0];
-	float P01 = kf->P[0][1];
-
-	kf->P[0][0] -= K0 * P00;
-	kf->P[0][1] -= K0 * P01;
-	kf->P[1][0] = kf->P[0][1]; // Đối xứng
-	kf->P[1][1] -= K1 * P01;
-}
-
-// Hàm gộp (thay thế cho kalman_2d gốc của bạn)
-void Kalman2D_Compute(Kalman2D_t *kf, float acc_z, float alt_measured,
-		float sigma_alt, float dt) {
-	Kalman2D_Predict(kf, acc_z, dt);
-	Kalman2D_Update(kf, alt_measured, sigma_alt);
-}
-
 /* ================================================================
  *                    KALMAN FILTER 1 TRUC (pos, vel)
  *  Mo hinh:  x = [pos; vel],  u = accel (control input)
@@ -130,12 +58,13 @@ void KalmanAxis_Predict(KalmanAxis_t *kf, float accel, float dt) {
 
 	float newP00 = P00 + dt * (P01 + P10) + dt * dt * P11;
 	float newP01 = P01 + dt * P11;
-	float newP10 = P10 + dt * P11;
+	float newP10 = newP01; 	// matran doi xung nen cho bang nhau luon
 	float newP11 = P11;
 
-	// Nhieu qua trinh don gian hoa (them truc tiep, du dung cho embedded thuc te)
-	newP00 += KF_Q_ACCEL * dt * dt * dt * 0.25f;
-	newP11 += KF_Q_ACCEL * dt;
+	newP00 += KF_Q_ACCEL * dt * dt * dt * dt * 0.25f;
+	newP01 += KF_Q_ACCEL * dt * dt * dt * 0.5f;
+	newP10 = newP01;
+	newP11 += KF_Q_ACCEL * dt * dt;
 
 	kf->P[0][0] = newP00;
 	kf->P[0][1] = newP01;
@@ -144,28 +73,30 @@ void KalmanAxis_Predict(KalmanAxis_t *kf, float accel, float dt) {
 }
 
 void KalmanAxis_UpdateVel(KalmanAxis_t *kf, float measured_vel, float R) {
-	// Residual (innovation)
-	float y = measured_vel - kf->vel;
-
-	// S = H*P*H^T + R = P11 + R
+	float P00 = kf->P[0][0];
+	float P01 = kf->P[0][1];
+	float P11 = kf->P[1][1];
+	// 1. Tinh Kalman Gain: K[Kp,Kv]
 	float S = kf->P[1][1] + R;
 	if (S < 1e-6f)
 		S = 1e-6f;
+	float Kp = kf->P[0][1] / S;
+	float Kv = kf->P[1][1] / S;
 
-	// Kalman gain K = P*H^T / S
-	float K0 = kf->P[0][1] / S;
-	float K1 = kf->P[1][1] / S;
+	//2. Cap nhat ma tran voi do luong:
+	float innovation = measured_vel - kf->vel;
+	kf->pos += Kp * innovation;
+	kf->vel += Kv * innovation;
 
-	kf->pos += K0 * y;
-	kf->vel += K1 * y;
+	//3. Update ma tran hiep phuong sai (covariance)
+	float newP00 = P00 - Kp * P01;
+	float newP01 = P01 - Kp * P11;
+	float newP11 = P11 - Kv * P11;
 
-	float P00 = kf->P[0][0], P01 = kf->P[0][1];
-	float P10 = kf->P[1][0], P11 = kf->P[1][1];
-
-	kf->P[0][0] = P00 - K0 * P10;
-	kf->P[0][1] = P01 - K0 * P11;
-	kf->P[1][0] = P10 - K1 * P10;
-	kf->P[1][1] = P11 - K1 * P11;
+	kf->P[0][0] = newP00;
+	kf->P[0][1] = newP01;
+	kf->P[1][0] = newP01;
+	kf->P[1][1] = newP11;
 }
 
 void KalmanAxis_UpdatePos(KalmanAxis_t *kf, float pos_meas, float R) {
@@ -201,70 +132,14 @@ void KalmanAxis_Compute(KalmanAxis_t *kf, float accel, float vel_measure,
 	KalmanAxis_UpdateVel(kf, vel_measure, R);
 }
 
-// kalman.c
-void Kalman3D_Init(Kalman3D_t *kf, float initial_alt) {
-	kf->altitude = initial_alt;
-	kf->velocity = 0.0f;
-	kf->baro_bias = 0.0f;
-	for (int i = 0; i < 3; i++)
-		for (int j = 0; j < 3; j++)
-			kf->P[i][j] = (i == j) ? (i == 2 ? 5.0f : 10.0f) : 0.0f;
-}
-
-void Kalman3D_Predict(Kalman3D_t *kf, float acc_z, float dt) {
-	// Model: altitude += vel*dt + 0.5*acc*dt^2 ; velocity += acc*dt ; bias không đổi (random walk chậm)
-	kf->altitude += dt * kf->velocity + 0.5f * dt * dt * acc_z;
-	kf->velocity += dt * acc_z;
-	// baro_bias giữ nguyên trong predict, chỉ trôi qua Q
-
-	float var_acc = 10.0f * 10.0f;
-	float dt2 = dt * dt, dt3 = dt2 * dt, dt4 = dt2 * dt2;
-
-	float Q00 = 0.25f * dt4 * var_acc;
-	float Q01 = 0.5f * dt3 * var_acc;
-	float Q11 = dt2 * var_acc;
-	float Q22 = 0.01f * dt; // random walk RẤT chậm cho baro bias — chỉnh theo thực nghiệm
-
-	float P00 = kf->P[0][0], P01 = kf->P[0][1], P02 = kf->P[0][2];
-	float P10 = kf->P[1][0], P11 = kf->P[1][1], P12 = kf->P[1][2];
-	float P20 = kf->P[2][0], P21 = kf->P[2][1], P22 = kf->P[2][2];
-
-	kf->P[0][0] = P00 + dt * (P01 + P10) + dt2 * P11 + Q00;
-	kf->P[0][1] = P01 + dt * P11 + Q01;
-	kf->P[0][2] = P02 + dt * P12;
-	kf->P[1][0] = kf->P[0][1];
-	kf->P[1][1] = P11 + Q11;
-	kf->P[1][2] = P12;
-	kf->P[2][0] = kf->P[0][2];
-	kf->P[2][1] = kf->P[1][2];
-	kf->P[2][2] = P22 + Q22;
-}
-
-void Kalman3D_Update(Kalman3D_t *kf, float alt_measured, float sigma_alt) {
-	// Phép đo: z = altitude + baro_bias  →  H = [1, 0, 1]
-	float R = sigma_alt * sigma_alt;
-	float S = kf->P[0][0] + 2 * kf->P[0][2] + kf->P[2][2] + R;
-
-	float K0 = (kf->P[0][0] + kf->P[0][2]) / S;
-	float K1 = (kf->P[1][0] + kf->P[1][2]) / S;
-	float K2 = (kf->P[2][0] + kf->P[2][2]) / S;
-
-	float y = alt_measured - (kf->altitude + kf->baro_bias);
-
-	kf->altitude += K0 * y;
-	kf->velocity += K1 * y;
-	kf->baro_bias += K2 * y;
-
-	float P0[3] = { kf->P[0][0], kf->P[0][1], kf->P[0][2] };
-	float P1[3] = { kf->P[1][0], kf->P[1][1], kf->P[1][2] };
-	float P2[3] = { kf->P[2][0], kf->P[2][1], kf->P[2][2] };
-
-	for (int j = 0; j < 3; j++) {
-		kf->P[0][j] = P0[j] - K0 * (P0[j] + P2[j]);
-		kf->P[1][j] = P1[j] - K1 * (P0[j] + P2[j]);
-		kf->P[2][j] = P2[j] - K2 * (P0[j] + P2[j]);
-	}
-}
+/*
+ * kalman_fusion.c
+ * Sensor Fusion: IMU (Acc_Z) + Baro (DPS310) + Rangefinder (MTF-01P)
+ */
+/*
+ * kalman.c
+ * Sensor Fusion: IMU (acc_z) + DPS310 Barometer + Rangefinder (MTF01-P)
+ */
 
 void Kalman4D_Init(Kalman4D_t *kf, float initial_alt) {
 	kf->altitude = initial_alt;
@@ -333,8 +208,8 @@ void Kalman4D_Predict(Kalman4D_t *kf, float acc_z, float dt) {
 			kf->P[i][j] = Ppred[i][j];
 }
 
-void Kalman4D_Update(Kalman4D_t *kf, float alt_measured, float sigma_alt) {
-	const float H[4] = { 1, 0, 0, 1 }; // z = altitude + baro_bias
+void Kalman4D_UpdateMeasure(Kalman4D_t *kf, float alt_measured, float sigma_alt,
+		float H[4]) {
 	float R = sigma_alt * sigma_alt;
 
 	// PHt = P * H^T
@@ -357,8 +232,12 @@ void Kalman4D_Update(Kalman4D_t *kf, float alt_measured, float sigma_alt) {
 	for (int i = 0; i < 4; i++)
 		K[i] = PHt[i] / S;
 
-	// Innovation
-	float y = alt_measured - (kf->altitude + kf->baro_bias);
+	// ----- SỬA LỖI INNOVATION Ở ĐÂY -----
+	// Lấy trạng thái hiện tại nhân với ma trận H để ra giá trị dự đoán
+	float h_x = kf->altitude * H[0] + kf->velocity * H[1] + kf->acc_bias * H[2]
+			+ kf->baro_bias * H[3];
+
+	float y = alt_measured - h_x; // Sai số giữa thực tế và dự đoán
 
 	kf->altitude += K[0] * y;
 	kf->velocity += K[1] * y;
@@ -366,7 +245,7 @@ void Kalman4D_Update(Kalman4D_t *kf, float alt_measured, float sigma_alt) {
 	kf->baro_bias += K[3] * y;
 
 	// P = (I - K*H) * P
-	float M[4][4]; // M = I - K*H
+	float M[4][4];
 	for (int i = 0; i < 4; i++)
 		for (int j = 0; j < 4; j++)
 			M[i][j] = (i == j ? 1.0f : 0.0f) - K[i] * H[j];
@@ -384,8 +263,61 @@ void Kalman4D_Update(Kalman4D_t *kf, float alt_measured, float sigma_alt) {
 			kf->P[i][j] = Pnew[i][j];
 }
 
-void Kalman4D_Compute(Kalman4D_t *kf, float acc_z, float alt_measured,
-		float sigma_alt, float dt) {
-	Kalman4D_Predict(kf, acc_z, dt);
-	Kalman4D_Update(kf, alt_measured, sigma_alt);
+// Ngưỡng độ cao chuyển giao (cm)
+#define TRANSITION_ALT 150.0f
+
+float Kalman4D_getSigmaBaro(float current_estimated_alt_cm) {
+	float base_sigma = 20.0f; // Nhiễu tiêu chuẩn của Baro khi bay cao (cm)
+
+	// Nếu bay dưới 1.5m, ground effect từ cánh quạt làm nhiễu Baro -> Tăng R
+	if (current_estimated_alt_cm < TRANSITION_ALT) {
+		float factor = (TRANSITION_ALT - current_estimated_alt_cm)
+				/ TRANSITION_ALT;
+		if (factor < 0.0f)
+			factor = 0.0f;
+		// Ở mặt đất (0m) sigma = 230cm, lên đến 1.5m sigma giảm dần về 30cm
+		base_sigma += factor * 200.0f;
+	}
+	return base_sigma;
 }
+
+float Kalman4D_getSigmaRange(float range_alt_cm, float current_estimated_alt_cm,
+		float acc_z) {
+	float base_sigma = 2.0f; // Rangefinder đo rất chính xác ở tầm thấp (5cm)
+
+	// 1. Phân kì tầm xa: Lên quá cao (2m) thì Rangefinder không còn là nguồn ưu tiên
+	if (range_alt_cm > 200.0f || current_estimated_alt_cm > 200.0f) {
+		return 10000.0f; // Phạt R cực lớn để Kalman gần như lờ đi Rangefinder
+	}
+
+	// 2. Chống nhiễu địa hình (bụi cỏ, hố trũng)
+	float diff = fabsf(range_alt_cm - current_estimated_alt_cm);
+	float acc_z_abs = fabsf(acc_z);
+
+	// Nếu Rangefinder báo nhảy độ cao > 20cm NHƯNG gia tốc Z không lớn (< 2m/s^2)
+	// Chứng tỏ drone không thực sự giật lên/xuống mà do địa hình bên dưới thay đổi.
+	if (diff > 20.0f && acc_z_abs < 200.0f) {
+		// Tăng nhiễu tỉ lệ thuận với độ lệch để hệ thống chuyển qua bám vào Baro/Acc
+		base_sigma += diff * 10.0f;
+	}
+
+	return base_sigma;
+}
+
+// Cập nhật Baro: Tính sigma dựa trên độ cao ước lượng hiện tại của KF
+void Kalman4D_UpdateBaro(Kalman4D_t *kf, float baro_alt_cm) {
+	float H[4] = { 1, 0, 0, 1 }; // z = altitude + baro_bias
+	float sigma_baro = Kalman4D_getSigmaBaro(kf->altitude);
+	Kalman4D_UpdateMeasure(kf, baro_alt_cm, sigma_baro, H);
+}
+
+float sigma_range;
+// Cập nhật Rangefinder: Tính sigma dựa trên biến động của range và acc_z
+void Kalman4D_UpdateRange(Kalman4D_t *kf, float range_alt_cm, float acc_z) {
+	float H[4] = { 1, 0, 0, 0 }; // Rangefinder đo độ cao thật, không có baro_bias
+
+	// Yêu cầu bạn truyền acc_z vào hàm này (lưu ý: acc_z phải là gia tốc đã trừ đi trọng lực 1G)
+	sigma_range = Kalman4D_getSigmaRange(range_alt_cm, kf->altitude, acc_z);
+	Kalman4D_UpdateMeasure(kf, range_alt_cm, sigma_range, H);
+}
+

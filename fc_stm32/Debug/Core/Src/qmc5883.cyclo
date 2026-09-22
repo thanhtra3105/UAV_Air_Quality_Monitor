@@ -1,3 +1,3 @@
-../Core/Src/qmc5883.c:12:6:QMC5883_CalibHardIron	1
-../Core/Src/qmc5883.c:26:6:QMC5883_Init	1
-../Core/Src/qmc5883.c:50:6:QMC5883_Read	2
+../Core/Src/qmc5883.c:4:6:QMC5883_CalibHardIron	1
+../Core/Src/qmc5883.c:28:6:QMC5883_Init	1
+../Core/Src/qmc5883.c:52:6:QMC5883_Read	2

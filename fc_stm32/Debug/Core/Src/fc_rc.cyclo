@@ -1,5 +1,5 @@
-../Core/Inc/fc_state.h:169:20:map_val	1
+../Core/Inc/fc_state.h:174:20:map_val	1
 ../Core/Src/fc_rc.c:17:6:RC_Init	1
 ../Core/Src/fc_rc.c:29:6:RC_WaitForZeroThrottle	4
-../Core/Src/fc_rc.c:46:6:RC_Failsafe	5
+../Core/Src/fc_rc.c:46:6:RC_Failsafe	6
 ../Core/Src/fc_rc.c:68:6:RC_Process	4

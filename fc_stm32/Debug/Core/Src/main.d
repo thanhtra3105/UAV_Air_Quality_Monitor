@@ -36,8 +36,8 @@ Core/Src/main.o: ../Core/Src/main.c ../Core/Inc/main.h \
  ../Core/Inc/main.h ../Core/Inc/fc_motors.h ../Core/Inc/fc_rc.h \
  ../Core/Inc/fc_telemetry.h ../Core/Inc/fc_ahrs.h ../Core/Inc/icm20602.h \
  ../Core/Inc/dsp310.h ../Core/Inc/ist8310.h ../Core/Inc/qmc5883.h \
- ../Core/Inc/kalman.h ../Core/Inc/fc_pos_estimator.h \
- ../Core/Inc/kalman_gps.h ../Core/Inc/mtf01.h ../Core/Inc/gps.h \
+ ../Core/Inc/kalman.h ../Core/Inc/mtf01.h ../Core/Inc/fc_pos_estimator.h \
+ ../Core/Inc/kalman_gps.h ../Core/Inc/gps.h \
  ../Core/Inc/fc_attitude_control.h ../Core/Inc/pid_controller.h \
  ../Core/Inc/fc_flight_modes.h ../Core/Inc/mission.h \
  ../Core/Src/uart_cmd.h ../Core/Inc/mtf01.h ../Core/Inc/gps.h \
@@ -89,9 +89,9 @@ Core/Src/main.o: ../Core/Src/main.c ../Core/Inc/main.h \
 ../Core/Inc/ist8310.h:
 ../Core/Inc/qmc5883.h:
 ../Core/Inc/kalman.h:
+../Core/Inc/mtf01.h:
 ../Core/Inc/fc_pos_estimator.h:
 ../Core/Inc/kalman_gps.h:
-../Core/Inc/mtf01.h:
 ../Core/Inc/gps.h:
 ../Core/Inc/fc_attitude_control.h:
 ../Core/Inc/pid_controller.h:

@@ -38,23 +38,6 @@ void GPS_UART_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size) {
 	}
 }
 
-void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart) {
-	// Kiểm tra xem lỗi có xuất phát từ UART của GPS không
-	if (huart->Instance == gps_huart->Instance) {
-		// Hủy quá trình nhận hiện tại để dọn dẹp cờ lỗi
-		HAL_UART_AbortReceive(huart);
-
-		// Quan trọng: Mồi lại DMA để tiếp tục bắt tín hiệu
-		HAL_UARTEx_ReceiveToIdle_DMA(gps_huart, rx_dma_buffer,
-		GPS_DMA_BUF_SIZE);
-	}
-	if (huart->Instance == USART2) {
-		__HAL_UART_CLEAR_OREFLAG(huart);
-		HAL_UART_AbortReceive(huart);
-		extern uint8_t uart_rx_mtf01;
-		HAL_UART_Receive_IT(huart, &uart_rx_mtf01, 1);
-	}
-}
 
 // =========================================================
 // MÁY TRẠNG THÁI (STATE MACHINE) XỬ LÝ UBX
@@ -219,3 +202,14 @@ void GPS_Process(GPS_Data_t *myGPS) {
 	}
 }
 
+void GPS_UART_ErrorCallback(UART_HandleTypeDef *huart) {
+	// Kiểm tra xem lỗi có xuất phát từ UART của GPS không
+	if (huart->Instance == gps_huart->Instance) {
+		// Hủy quá trình nhận hiện tại để dọn dẹp cờ lỗi
+		HAL_UART_AbortReceive(huart);
+		// Quan trọng: Mồi lại DMA để tiếp tục bắt tín hiệu
+		HAL_UARTEx_ReceiveToIdle_DMA(gps_huart, rx_dma_buffer,
+		GPS_DMA_BUF_SIZE);
+	}
+
+}

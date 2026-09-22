@@ -48,6 +48,7 @@ extern "C" {
 
 #define IST8310_REG_AVGCNTL          0x41
 #define IST8310_AVGCNTL_16X          0x24   /* Theo manual: Write 24h vào 0x41h */
+#define IST8310_REG_GSTR        0x42   /* Thanh ghi cấu hình Filter */
 
 #define IST8310_REG_PDCNTL           0x42
 #define IST8310_PDCNTL_PULSE         0xC0   /* Theo manual: Write C0h vào 0x42h */
@@ -106,7 +107,7 @@ uint8_t IST8310_Init(I2C_HandleTypeDef *hi2c, IST8310_Data_t *magData);
  * @retval khác 0/4       Lỗi (xem các mã IST8310_ERROR_x)
  */
 uint8_t IST8310_Read(I2C_HandleTypeDef *hi2c, IST8310_Data_t *magData);
-
+void IST8310_Calibrate(I2C_HandleTypeDef *hi2c, uint32_t duration_ms);
 #ifdef __cplusplus
 }
 #endif

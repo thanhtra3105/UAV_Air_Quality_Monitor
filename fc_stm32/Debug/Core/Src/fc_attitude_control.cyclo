@@ -1,5 +1,5 @@
-../Core/Inc/fc_state.h:163:21:constrain_f	3
-../Core/Inc/fc_state.h:173:21:angle_diff_deg	3
+../Core/Inc/fc_state.h:168:21:constrain_f	3
+../Core/Inc/fc_state.h:178:21:angle_diff_deg	3
 ../Core/Src/fc_attitude_control.c:22:6:AttitudeControl_Init	1
 ../Core/Src/fc_attitude_control.c:34:6:AttitudeControl_ResetAll	1
 ../Core/Src/fc_attitude_control.c:41:6:AttitudeControl_AngleLoop	2

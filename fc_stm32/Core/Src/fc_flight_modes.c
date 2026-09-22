@@ -77,25 +77,11 @@ void Mode_AltHold_Update(VehicleState_t *veh, float dt) {
 	if (veh == NULL)
 		return;
 
-	// static bool alt_init = false;
-
-	// if (veh->alt_hold_active) {
-	// 	if (!alt_init) {
-	// 		alt_init = true;
-	// 		veh->target_alt = veh->est_alt;
-	// 		PID_Reset(&PID_Alt_Pos);
-	// 		PID_Reset(&PID_Alt_Vel);
-	// 	}
-
 	float alt_err = veh->target_alt - veh->est_alt;
 	veh->target_vz = PID_Calculate(&PID_Alt_Pos, alt_err, dt);
 	veh->target_vz = constrain_f(veh->target_vz, -MAX_TARGET_VZ,
 	MAX_TARGET_VZ);
-	// } else {
-	// 	alt_init = false;
-	// 	veh->target_vz = 0.0f;
-	// 	PID_Reset(&PID_Alt_Pos);
-	// }
+
 }
 
 void Mode_GPS_PositionHold_Update(VehicleState_t *veh, float dt) {
@@ -318,8 +304,7 @@ void FlightModes_Update(VehicleState_t *veh, float dt) {
 			veh->target_x = veh->est_x;         // Khóa vị trí X
 			veh->target_y = veh->est_y;         // Khóa vị trí Y
 			veh->current_wp_index = 0;
-			veh->mission_running =
-					(Mission_IsReady() && Mission_GetCount() > 0);
+			veh->mission_running = (Mission_IsReady() && Mission_GetCount() > 0);
 			PID_Reset(&PID_Pos_X);
 			PID_Reset(&PID_Pos_Y);
 			PID_Reset(&PID_Vel_X);

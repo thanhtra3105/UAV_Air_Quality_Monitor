@@ -1,6 +1,7 @@
-../Core/Src/ist8310.c:36:26:IST8310_WriteReg	1
-../Core/Src/ist8310.c:42:26:IST8310_ReadRegs	1
-../Core/Src/ist8310.c:49:16:IST8310_CombineLE	1
-../Core/Src/ist8310.c:58:16:IST8310_ComputeCompensationMatrix	8
-../Core/Src/ist8310.c:114:9:IST8310_Init	9
-../Core/Src/ist8310.c:161:9:IST8310_Read	8
+../Core/Src/ist8310.c:44:26:IST8310_WriteReg	1
+../Core/Src/ist8310.c:50:26:IST8310_ReadRegs	1
+../Core/Src/ist8310.c:57:16:IST8310_CombineLE	1
+../Core/Src/ist8310.c:64:19:IST8310_ComputeCompensationMatrix	8
+../Core/Src/ist8310.c:121:9:IST8310_Init	9
+../Core/Src/ist8310.c:157:9:IST8310_Read	10
+../Core/Src/ist8310.c:226:6:IST8310_Calibrate	9

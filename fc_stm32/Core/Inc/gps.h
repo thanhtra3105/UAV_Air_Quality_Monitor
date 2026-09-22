@@ -50,8 +50,8 @@ typedef struct {
 // Các hàm giao tiếp
 void GPS_Init_DMA(UART_HandleTypeDef *huart);
 void GPS_Process(GPS_Data_t *myGPS);
-
 // Hàm ngắt dành riêng cho chuẩn GPDMA + IDLE
 void GPS_UART_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size);
+void GPS_UART_ErrorCallback(UART_HandleTypeDef *huart);
 
 #endif /* GPS_H */

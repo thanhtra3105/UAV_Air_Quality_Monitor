@@ -73,7 +73,7 @@ void FlightController_Run(void) {
     AHRS_UpdateAttitude(&g_veh, dt);
 
     // High rate GPS Kalman prediction
-    PosEstimator_UpdateGPS(&g_veh, dt);
+//    PosEstimator_UpdateGPS(&g_veh, dt);
 
     // =========================================================================
     // 2. MEDIUM LOOP (250 Hz): Flight Modes & Outer Angle PID
@@ -88,8 +88,9 @@ void FlightController_Run(void) {
         AttitudeControl_AngleLoop(&g_veh, dt_250hz);
 
         // Optical flow / TOF packet processing
-        MTF01_Update(&mtf_data);
+        g_veh.mtf_updated = MTF01_Update(&mtf_data);
     }
+    PosEstimator_UpdateOpticalFlow(&g_veh, dt);
 
     // =========================================================================
     // 3. INNER RATE LOOP & MOTOR MIXER (500 Hz)
@@ -120,7 +121,7 @@ void FlightController_Run(void) {
     }
 
     loop_count++;
-
+//    g_veh.mtf_updated = 0;
     // Maintain precise 2000 microsecond (500 Hz) cycle
     while ((DWT_GetMicros() - start) < 2000) {
         // Spin wait

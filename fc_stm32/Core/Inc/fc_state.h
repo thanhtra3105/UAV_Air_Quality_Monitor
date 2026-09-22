@@ -99,6 +99,7 @@ typedef struct {
     float           compass_heading;
     float           baro_alt;
     float           baro_alt_offset;
+    float 			range_alt_offset;
     float           battery_voltage;
 
     // 4. Attitude Estimation (Euler Angles - degrees)
@@ -113,10 +114,15 @@ typedef struct {
     float           ax_bias, ay_bias;
     float           est_x, est_y;       // meters
     float           est_vx, est_vy;     // m/s
-    float           est_alt;            // cm
     float           est_vz;             // cm/s
     float           acc_z_filt;
+    // Altitude
+    float           alt;            // cm
+    float           est_alt;            // cm
+    float 			vel_z;
 
+    //	MTF01
+    uint8_t 		mtf_updated;
     // GPS local coordinates & Home
     double          home_lat;
     double          home_lon;
@@ -146,7 +152,6 @@ typedef struct {
     float           pid_r;
     float           pid_y;
     float           pid_alt;
-    float           pid_alt_vel_out;
 
     // 8. Motor PWM Outputs (1000 - 2000 us)
     int16_t         motor_pwm[4];

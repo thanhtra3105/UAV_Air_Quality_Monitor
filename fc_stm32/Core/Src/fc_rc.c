@@ -56,8 +56,8 @@ void RC_Failsafe(VehicleState_t *veh) {
 				veh->last_failsafe_throttle_tick = now;
 			} else {
 				// When descending near ground / slow descent
-				if (veh->est_vz < 10.0f) {
-					veh->throttle = 1000;
+				if (veh->est_vz < 20.0f && veh->alt < 20) {
+					veh->throttle = 1000;	// disarm
 				}
 			}
 		}
