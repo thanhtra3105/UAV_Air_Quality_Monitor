@@ -18,33 +18,32 @@ extern SPI_HandleTypeDef hspi1;
 #define PWR_MGMT_2      0x6C
 
 #define SMPLRT_DIV      0x19
-#define ICM_CONFIG          0x1A
+#define ICM_CONFIG      0x1A
 #define GYRO_CONFIG     0x1B
 #define ACCEL_CONFIG    0x1C
 #define ACCEL_CONFIG2   0x1D
 
 #define ACCEL_XOUT_H    0x3B
 
-typedef struct
-{
-    float x;
-    float y;
-    float z;
-}Vector3f;
+typedef struct {
+	float x;
+	float y;
+	float z;
+} Vector3f;
 
-typedef struct
-{
-    Vector3f accel;
-    Vector3f gyro;
-    float temperature;
-}ICM20602_t;
+typedef struct {
+	Vector3f accel;
+	Vector3f gyro;
+	float temperature;
+	volatile uint8_t data_ready; // set=1 trong callback, main loop clear sau khi xử lý
+	uint32_t overrun_count;   // đếm số lần StartReadDMA bị skip do busy
+} ICM20602_t;
 
 uint8_t ICM20602_ReadReg(uint8_t reg);
-void ICM20602_WriteReg(uint8_t reg,uint8_t value);
-void ICM20602_ReadRegs(uint8_t reg,uint8_t *buf,uint8_t len);
+void ICM20602_WriteReg(uint8_t reg, uint8_t value);
+void ICM20602_ReadRegs(uint8_t reg, uint8_t *buf, uint8_t len);
 
 void ICM20602_Init(void);
-
-void ICM20602_Read(ICM20602_t *imu);
+void ICM20602_StartReadDMA(ICM20602_t *imu);
 
 #endif

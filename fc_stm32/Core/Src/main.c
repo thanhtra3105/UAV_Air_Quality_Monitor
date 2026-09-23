@@ -76,6 +76,8 @@ DMA_HandleTypeDef handle_GPDMA2_Channel0;
 
 SPI_HandleTypeDef hspi1;
 SPI_HandleTypeDef hspi2;
+DMA_HandleTypeDef handle_GPDMA2_Channel3;
+DMA_HandleTypeDef handle_GPDMA2_Channel2;
 
 TIM_HandleTypeDef htim3;
 TIM_HandleTypeDef htim6;
@@ -333,6 +335,10 @@ static void MX_GPDMA2_Init(void)
     HAL_NVIC_EnableIRQ(GPDMA2_Channel0_IRQn);
     HAL_NVIC_SetPriority(GPDMA2_Channel1_IRQn, 0, 0);
     HAL_NVIC_EnableIRQ(GPDMA2_Channel1_IRQn);
+    HAL_NVIC_SetPriority(GPDMA2_Channel2_IRQn, 0, 0);
+    HAL_NVIC_EnableIRQ(GPDMA2_Channel2_IRQn);
+    HAL_NVIC_SetPriority(GPDMA2_Channel3_IRQn, 0, 0);
+    HAL_NVIC_EnableIRQ(GPDMA2_Channel3_IRQn);
 
   /* USER CODE BEGIN GPDMA2_Init 1 */
 

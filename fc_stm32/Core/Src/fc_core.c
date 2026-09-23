@@ -9,121 +9,132 @@
 
 extern UART_HandleTypeDef huart1;
 extern UART_HandleTypeDef huart7;
-extern TIM_HandleTypeDef  htim6;
+extern TIM_HandleTypeDef htim6;
 
 // Central Vehicle State instance
 VehicleState_t g_veh;
 
 // Buffer for ESP32 Mission DMA chunk reception
 uint8_t rx_mission_buffer[MISSION_BUFFER_SIZE];
+extern ICM20602_t imu;
 
 void FlightController_Init(void) {
-    // 0. Initialize Vehicle State default values
-    memset(&g_veh, 0, sizeof(VehicleState_t));
-    g_veh.throttle = 1000;
-    g_veh.throttle_hover = 1000;
+	// 0. Initialize Vehicle State default values
+	memset(&g_veh, 0, sizeof(VehicleState_t));
+	g_veh.throttle = 1000;
+	g_veh.throttle_hover = 1000;
 
-    // 1. Start TIM6 IT for timer tick
-    HAL_TIM_Base_Start_IT(&htim6);
+	// 1. Start TIM6 IT for timer tick
+	HAL_TIM_Base_Start_IT(&htim6);
 
-    // 2. Initialize Hardware Drivers & Subsystems
-    RC_Init();
-    Motors_Init();
-    PosEstimator_Init();
-    AHRS_Init(&g_veh);
-    AttitudeControl_Init();
-    FlightModes_Init();
-    Telemetry_Init();
+	// 2. Initialize Hardware Drivers & Subsystems
+	RC_Init();
+	Motors_Init();
+	PosEstimator_Init();
+	AHRS_Init(&g_veh);
+	AttitudeControl_Init();
+	FlightModes_Init();
+	Telemetry_Init();
 
-    // 3. Initialize Mission subsystem and start UART7 DMA reception
-    Mission_Init();
-    HAL_UARTEx_ReceiveToIdle_DMA(&huart7, rx_mission_buffer, MISSION_BUFFER_SIZE);
+	// 3. Initialize Mission subsystem and start UART7 DMA reception
+	Mission_Init();
+	HAL_UARTEx_ReceiveToIdle_DMA(&huart7, rx_mission_buffer,
+	MISSION_BUFFER_SIZE);
 
-    // 4. Initialize RC Receiver and wait for zero throttle
-    RC_WaitForZeroThrottle(&g_veh);
+	// 4. Initialize RC Receiver and wait for zero throttle
+	RC_WaitForZeroThrottle(&g_veh);
 
-    Serial_printf(&huart1, "[OK] START FLIGHT CONTROLLER\r\n");
+	Serial_printf(&huart1, "[OK] START FLIGHT CONTROLLER\r\n");
 }
 
 void FlightController_Run(void) {
-    static uint32_t loop_count = 0;
-    static uint32_t ina219_timer = 0;
-    static uint32_t esp_timer = 0;
+	static uint32_t loop_count = 0;
+	static uint32_t ina219_timer = 0;
+	static uint32_t esp_timer = 0;
+	static uint32_t imu_dma_timer = 0; /* THÊM */
+	uint32_t start = DWT_GetMicros();
+	float dt = 0.002f; // 500 Hz fast loop
 
-    uint32_t start = DWT_GetMicros();
-    float dt = 0.002f; // 500 Hz fast loop
+	// =========================================================================
+	// 1. FAST LOOP (500 Hz): RC, State Estimation, Rate PID, Motors
+	// =========================================================================
+	RC_Process(&g_veh);
 
-    // =========================================================================
-    // 1. FAST LOOP (500 Hz): RC, State Estimation, Rate PID, Motors
-    // =========================================================================
-    RC_Process(&g_veh);
+	// Yaw hold initialization on throttle push
+	if (!g_veh.yaw_hold_init && g_veh.throttle > 1030) {
+		g_veh.target_yaw = g_veh.yaw;
+		g_veh.yaw_hold_init = true;
+	}
+	if (g_veh.throttle < 1030) {
+		g_veh.yaw_hold_init = false;
+		g_veh.target_yaw = g_veh.yaw;
+	}
+	/* THÊM — trigger DMA đọc IMU ở 8kHz, phải nằm TRƯỚC AHRS_ReadIMU */
+	if ((DWT_GetMicros() - imu_dma_timer) >= 125) {
+		ICM20602_StartReadDMA(&imu);
+		imu_dma_timer = DWT_GetMicros();
+	}
+	// Sensor acquisition & Attitude estimation
+	AHRS_ReadIMU(&g_veh);
+	AHRS_UpdateAttitude(&g_veh, dt);
 
-    // Yaw hold initialization on throttle push
-    if (!g_veh.yaw_hold_init && g_veh.throttle > 1030) {
-        g_veh.target_yaw = g_veh.yaw;
-        g_veh.yaw_hold_init = true;
-    }
-    if (g_veh.throttle < 1030) {
-        g_veh.yaw_hold_init = false;
-        g_veh.target_yaw = g_veh.yaw;
-    }
+	// High rate GPS Kalman prediction
+    PosEstimator_UpdateGPS(&g_veh, dt);
 
-    // Sensor acquisition & Attitude estimation
-    AHRS_ReadIMU(&g_veh);
-    AHRS_UpdateAttitude(&g_veh, dt);
+//	 =========================================================================
+//	 2. MEDIUM LOOP (250 Hz): Flight Modes & Outer Angle PID
+//	 =========================================================================
+	if ((loop_count & 1) == 0) {
+		float dt_250hz = dt * 2.0f;
 
-    // High rate GPS Kalman prediction
-//    PosEstimator_UpdateGPS(&g_veh, dt);
+		// Altitude & Position hold setpoint updates
+		FlightModes_Update(&g_veh, dt_250hz);
 
-    // =========================================================================
-    // 2. MEDIUM LOOP (250 Hz): Flight Modes & Outer Angle PID
-    // =========================================================================
-    if ((loop_count & 1) == 0) {
-        float dt_250hz = dt * 2.0f;
+		// Outer angle PID loop -> Target angular rates
+		AttitudeControl_AngleLoop(&g_veh, dt_250hz);
 
-        // Altitude & Position hold setpoint updates
-        FlightModes_Update(&g_veh, dt_250hz);
+		// Optical flow / TOF packet processing
+		g_veh.mtf_updated = MTF01_Update(&mtf_data);
+	}
+	PosEstimator_UpdateOpticalFlow(&g_veh, dt);
 
-        // Outer angle PID loop -> Target angular rates
-        AttitudeControl_AngleLoop(&g_veh, dt_250hz);
+	// =========================================================================
+	// 3. INNER RATE LOOP & MOTOR MIXER (500 Hz)
+	// =========================================================================
+	AttitudeControl_RateLoop(&g_veh, dt);
+	Motors_Mixer(&g_veh);
 
-        // Optical flow / TOF packet processing
-        g_veh.mtf_updated = MTF01_Update(&mtf_data);
-    }
-    PosEstimator_UpdateOpticalFlow(&g_veh, dt);
+	// =========================================================================
+	// 4. SLOW TASKS: GPS (~10Hz), Telemetry (~2Hz/1Hz)
+	// =========================================================================
+	if ((loop_count % 10) == 0) {
+		GPS_Process(&gps);
+	}
 
-    // =========================================================================
-    // 3. INNER RATE LOOP & MOTOR MIXER (500 Hz)
-    // =========================================================================
-    AttitudeControl_RateLoop(&g_veh, dt);
-    Motors_Mixer(&g_veh);
+	uint32_t current_time = DWT_GetMicros();
 
-    // =========================================================================
-    // 4. SLOW TASKS: GPS (~10Hz), Telemetry (~2Hz/1Hz)
-    // =========================================================================
-    if ((loop_count % 10) == 0) {
-        GPS_Process(&gps);
-    }
+	// 2 Hz task: Battery measurement
+	if (current_time - ina219_timer > 500000) {
+		Telemetry_UpdateBattery(&g_veh);
+		ina219_timer = current_time;
+	}
 
-    uint32_t current_time = DWT_GetMicros();
+	// 1 Hz task: ESP32 telemetry & LED indicator
+	if (current_time - esp_timer > 1000000) {
+		Telemetry_SendESP32(&g_veh);
+		Telemetry_UpdateLEDs(&g_veh);
+		esp_timer = current_time;
+	}
 
-    // 2 Hz task: Battery measurement
-    if (current_time - ina219_timer > 500000) {
-        Telemetry_UpdateBattery(&g_veh);
-        ina219_timer = current_time;
-    }
-
-    // 1 Hz task: ESP32 telemetry & LED indicator
-    if (current_time - esp_timer > 1000000) {
-        Telemetry_SendESP32(&g_veh);
-        Telemetry_UpdateLEDs(&g_veh);
-        esp_timer = current_time;
-    }
-
-    loop_count++;
+	loop_count++;
 //    g_veh.mtf_updated = 0;
-    // Maintain precise 2000 microsecond (500 Hz) cycle
-    while ((DWT_GetMicros() - start) < 2000) {
-        // Spin wait
-    }
+	// Maintain precise 2000 microsecond (500 Hz) cycle
+
+	char buf[20];
+	int time_meas = DWT_GetMicros() - start;
+	sprintf(buf, "%d\r\n", time_meas);
+	while ((DWT_GetMicros() - start) < 2000) {
+		// Spin wait
+	}
+	HAL_UART_Transmit(&huart1, buf, strlen(buf), 1);
 }

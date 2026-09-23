@@ -6,6 +6,7 @@
 #include "fc_ahrs.h"
 #include "dwt.h"
 #include "serial.h"
+#include "notch_lpf_filter.h"
 
 extern I2C_HandleTypeDef hi2c1;
 extern I2C_HandleTypeDef hi2c2;
@@ -18,7 +19,7 @@ Kalman4D_t kf_4d;
 extern MTF01_t mtf_data;
 
 #ifdef USE_QMC5883
-QMC5883_t      mag;
+QMC5883_t mag;
 #endif
 
 static float heading_lpf = 0.0f;
@@ -56,10 +57,11 @@ void AHRS_Init(VehicleState_t *veh) {
 
 	DWT_Init();
 	ICM20602_Init();
+	IMU_FilterChain_Setup();
 
 #ifdef USE_QMC5883
-    QMC5883_Init(&hi2c2, &mag, 0x00, 0x01, 0x03, 0x01);
-    mag.declination = 0;
+	QMC5883_Init(&hi2c2, &mag, 0x00, 0x01, 0x03, 0x01);
+	mag.declination = 0;
 #else
 	IST8310_Init(&hi2c2, &ist8310);
 #endif
@@ -86,18 +88,23 @@ void AHRS_Init(VehicleState_t *veh) {
 	AHRS_Calibrate(veh);
 }
 
+extern IMU_FilterChain_t g_imu_fc;
+
 void AHRS_ReadIMU(VehicleState_t *veh) {
 	if (veh == NULL)
 		return;
 
-	ICM20602_Read(&imu);
-	veh->gx = (imu.gyro.x - veh->gx_offset);
-	veh->gy = (imu.gyro.y - veh->gy_offset);
-	veh->gz = -(imu.gyro.z - veh->gz_offset);
+	float gx_f, gy_f, gz_f, ax_f, ay_f, az_f;
+	IMU_FilterChain_PopAverage(&g_imu_fc, &gx_f, &gy_f, &gz_f, &ax_f, &ay_f,
+			&az_f);
 
-	veh->ax = imu.accel.x - veh->ax_offset;
-	veh->ay = imu.accel.y - veh->ay_offset;
-	veh->az = imu.accel.z - (veh->az_offset - 1.0f);
+	veh->gx = gx_f - veh->gx_offset;
+	veh->gy = gy_f - veh->gy_offset;
+	veh->gz = -(gz_f - veh->gz_offset);
+
+	veh->ax = ax_f - veh->ax_offset;
+	veh->ay = ay_f - veh->ay_offset;
+	veh->az = az_f - (veh->az_offset - 1.0f);
 }
 
 static float computeHeading(float bx, float by, float bz, float roll_deg,
@@ -120,8 +127,8 @@ static float computeHeading(float bx, float by, float bz, float roll_deg,
 
 float AHRS_ReadHeading(float roll_deg, float pitch_deg) {
 #ifdef USE_QMC5883
-    QMC5883_Read(&hi2c2, &mag);
-    return computeHeading(mag.x, mag.y, mag.z, roll_deg, pitch_deg);
+	QMC5883_Read(&hi2c2, &mag);
+	return computeHeading(mag.x, mag.y, mag.z, roll_deg, pitch_deg);
 #else
 	static float last_heading = 0.0f;
 	if (IST8310_Read(&hi2c2, &ist8310) == IST8310_OK) {
