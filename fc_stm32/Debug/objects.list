@@ -19,6 +19,7 @@
 "./Core/Src/mission.o"
 "./Core/Src/mtf01.o"
 "./Core/Src/navigation.o"
+"./Core/Src/notch_lpf_filter.o"
 "./Core/Src/nrf.o"
 "./Core/Src/pid_controller.o"
 "./Core/Src/pos_hold.o"

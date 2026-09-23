@@ -35,7 +35,8 @@ Core/Src/fc_ahrs.o: ../Core/Src/fc_ahrs.c ../Core/Inc/fc_ahrs.h \
  ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal_exti.h \
  ../Core/Inc/types.h ../Core/Inc/icm20602.h ../Core/Inc/dsp310.h \
  ../Core/Inc/ist8310.h ../Core/Inc/qmc5883.h ../Core/Inc/kalman.h \
- ../Core/Inc/mtf01.h ../Core/Inc/dwt.h ../Core/Src/serial.h
+ ../Core/Inc/mtf01.h ../Core/Inc/dwt.h ../Core/Src/serial.h \
+ ../Core/Inc/notch_lpf_filter.h
 ../Core/Inc/fc_ahrs.h:
 ../Core/Inc/fc_state.h:
 ../Core/Inc/main.h:
@@ -81,3 +82,4 @@ Core/Src/fc_ahrs.o: ../Core/Src/fc_ahrs.c ../Core/Inc/fc_ahrs.h \
 ../Core/Inc/mtf01.h:
 ../Core/Inc/dwt.h:
 ../Core/Src/serial.h:
+../Core/Inc/notch_lpf_filter.h:

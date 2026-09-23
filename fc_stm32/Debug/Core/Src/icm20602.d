@@ -31,7 +31,8 @@ Core/Src/icm20602.o: ../Core/Src/icm20602.c ../Core/Inc/icm20602.h \
  ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal_tim_ex.h \
  ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal_uart.h \
  ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal_uart_ex.h \
- ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal_exti.h
+ ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal_exti.h \
+ ../Core/Inc/notch_lpf_filter.h
 ../Core/Inc/icm20602.h:
 ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal.h:
 ../Core/Inc/stm32h5xx_hal_conf.h:
@@ -66,3 +67,4 @@ Core/Src/icm20602.o: ../Core/Src/icm20602.c ../Core/Inc/icm20602.h \
 ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal_uart.h:
 ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal_uart_ex.h:
 ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal_exti.h:
+../Core/Inc/notch_lpf_filter.h:

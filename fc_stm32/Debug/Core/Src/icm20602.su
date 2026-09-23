@@ -1,6 +1,8 @@
-../Core/Src/icm20602.c:10:16:ICM_SPI_RW	32	static
-../Core/Src/icm20602.c:18:9:ICM20602_ReadReg	32	static
-../Core/Src/icm20602.c:34:6:ICM20602_WriteReg	32	static
-../Core/Src/icm20602.c:47:6:ICM20602_ReadRegs	88	static
-../Core/Src/icm20602.c:65:6:ICM20602_Read	48	static
-../Core/Src/icm20602.c:99:6:ICM20602_Init	8	static
+../Core/Src/icm20602.c:12:6:IMU_FilterChain_Setup	8	static
+../Core/Src/icm20602.c:20:9:ICM20602_ReadReg	32	static
+../Core/Src/icm20602.c:32:6:ICM20602_WriteReg	32	static
+../Core/Src/icm20602.c:42:6:ICM20602_ReadRegs	88	static
+../Core/Src/icm20602.c:63:6:ICM20602_StartReadDMA	16	static
+../Core/Src/icm20602.c:84:6:HAL_SPI_TxRxCpltCallback	32	static
+../Core/Src/icm20602.c:117:6:HAL_SPI_ErrorCallback	16	static
+../Core/Src/icm20602.c:129:6:ICM20602_Init	8	static

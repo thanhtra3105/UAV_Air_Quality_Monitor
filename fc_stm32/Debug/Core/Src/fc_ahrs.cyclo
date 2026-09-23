@@ -1,8 +1,8 @@
 ../Core/Inc/fc_state.h:178:21:angle_diff_deg	3
-../Core/Src/fc_ahrs.c:26:14:DSP_CalibrationAltitude	3
-../Core/Src/fc_ahrs.c:38:6:AHRS_Calibrate	2
-../Core/Src/fc_ahrs.c:50:6:AHRS_Init	5
-../Core/Src/fc_ahrs.c:89:6:AHRS_ReadIMU	2
-../Core/Src/fc_ahrs.c:103:14:computeHeading	3
-../Core/Src/fc_ahrs.c:121:7:AHRS_ReadHeading	1
-../Core/Src/fc_ahrs.c:138:6:AHRS_UpdateAttitude	14
+../Core/Src/fc_ahrs.c:27:14:DSP_CalibrationAltitude	3
+../Core/Src/fc_ahrs.c:39:6:AHRS_Calibrate	2
+../Core/Src/fc_ahrs.c:51:6:AHRS_Init	5
+../Core/Src/fc_ahrs.c:93:6:AHRS_ReadIMU	2
+../Core/Src/fc_ahrs.c:110:14:computeHeading	3
+../Core/Src/fc_ahrs.c:128:7:AHRS_ReadHeading	1
+../Core/Src/fc_ahrs.c:145:6:AHRS_UpdateAttitude	14
