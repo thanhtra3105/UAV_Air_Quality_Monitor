@@ -3,116 +3,262 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{% block title %}UAV Ground Control{% endblock %}</title>
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%233B82F6'/><path d='M16 4L8 9v14l8 5 8-5V9L16 4z' stroke='white' stroke-width='2' fill='none' stroke-linejoin='round'/><circle cx='16' cy='16' r='3' fill='white'/></svg>">
+  <title>{% block title %}Giám sát Không khí UAV — Bảng điều khiển{% endblock %}</title>
+  
+  <!-- Favicon -->
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='4' fill='%231a4d8f'/><path d='M16 5L7 11v10l9 6 9-6V11L16 5z' stroke='%2300e5ff' stroke-width='2' fill='none'/><circle cx='16' cy='16' r='3' fill='%23fff'/></svg>">
+  
+  <!-- Google Fonts: Inter + JetBrains Mono -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Roboto+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;600;700;800&display=swap" rel="stylesheet">
+  
+  <!-- CSS Stylesheet -->
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
   {% block head_extra %}{% endblock %}
 </head>
 <body>
-  <div class="shell">
-    <aside class="sidebar">
-      <div class="sidebar-brand">
-        <div class="brand-icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-            <path d="M12 2L4 7v10l8 5 8-5V7L12 2z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
-            <circle cx="12" cy="12" r="2.5" fill="currentColor"/>
-          </svg>
+  <div class="app-shell">
+    <!-- Sidebar: Navigation -->
+    <aside class="app-sidebar">
+      <div class="sidebar-header">
+        <div class="brand-badge">UAV</div>
+        <div class="brand-titles">
+          <span class="brand-main">QUAN TRẮC UAV</span>
+          <span class="brand-sub">GIÁM SÁT MÔI TRƯỜNG</span>
         </div>
-        <span class="brand-text">UAV<span class="brand-sub">GCS</span></span>
       </div>
 
       <nav class="sidebar-nav">
-        <a href="/" class="nav-item {% if request.path == '/' %}active{% endif %}">
-          <svg viewBox="0 0 20 20" fill="none"><path d="M2 10.5l8-7 8 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 8.8V17h4.5v-4h3V17H16V8.8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          <span>Mission Plan</span>
+        <a href="/" class="nav-link {% if request.path == '/' %}active{% endif %}" title="Lập kế hoạch & Giám sát bản đồ">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="3 11 22 2 13 21 11 13 3 11"/>
+          </svg>
+          <span>Bản đồ bay</span>
         </a>
-        <a href="/telemetry" class="nav-item {% if request.path == '/telemetry' %}active{% endif %}">
-          <svg viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="7.5" stroke="currentColor" stroke-width="1.5"/><path d="M10 5.5v5l3 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-          <span>Air Analytics</span>
+        <a href="/telemetry" class="nav-link {% if request.path == '/telemetry' %}active{% endif %}" title="Phân tích chất lượng không khí & biểu đồ">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="20" x2="18" y2="10"/>
+            <line x1="12" y1="20" x2="12" y2="4"/>
+            <line x1="6" y1="20" x2="6" y2="14"/>
+          </svg>
+          <span>Dữ liệu đo đạc</span>
         </a>
-        <a href="/stream" class="nav-item {% if request.path == '/stream' %}active{% endif %}">
-          <svg viewBox="0 0 20 20" fill="none"><rect x="2" y="4" width="16" height="11" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M7 15.5l3 2 3-2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          <span>Camera feed</span>
+        <a href="/stream" class="nav-link {% if request.path == '/stream' %}active{% endif %}" title="Hình ảnh camera trực tiếp">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M23 7l-7 5 7 5V7z"/>
+            <rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+          </svg>
+          <span>Camera giám sát</span>
         </a>
       </nav>
 
       <div class="sidebar-footer">
-        <div class="status-pill" id="arm-pill">
-          <span class="status-dot"></span>
-          <span id="arm-label">DISARMED</span>
+        <div class="mode-pill">
+          <span>CHẾ ĐỘ</span>
+          <span class="mode-tag mode-manual" id="sidebar-mode">Chờ bay</span>
         </div>
-        <div class="mode-badge" id="mode-badge">MANUAL</div>
+        <div class="mode-pill">
+          <span>THỜI GIAN BAY</span>
+          <span class="tabular-num" id="sidebar-flight-time" style="font-weight:700;color:var(--text);">00:00</span>
+        </div>
       </div>
     </aside>
 
-    <main class="main-area">
-      <header class="topbar">
+    <!-- Main Content Canvas -->
+    <main class="main-canvas">
+      <!-- TopBar: Header Bar -->
+      <header class="topbar-cockpit">
         <div class="topbar-left">
-          {% block topbar_title %}<h1 class="page-title">Ground Control</h1>{% endblock %}
-        </div>
-        <div class="topbar-right">
-          <div class="battery-chip" id="bat-chip">
-            <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
-              <rect x="1.5" y="5.5" width="14" height="9" rx="2" stroke="currentColor" stroke-width="1.3"/>
-              <path d="M16 8.5v3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
-              <rect id="bat-fill" x="3" y="7" width="10" height="6" rx="1" fill="currentColor"/>
+          <div class="station-title">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="9"/>
+              <path d="M12 3v18M3 12h18"/>
             </svg>
-            <span id="bat-text">N/A</span>
+            {% block topbar_title %}<span>TRẠM ĐIỀU HÀNH BAY & ĐO KHÔNG KHÍ</span>{% endblock %}
           </div>
-          <div class="gps-chip">
-            <svg width="14" height="14" viewBox="0 0 20 20" fill="none">
-              <circle cx="10" cy="9" r="3" stroke="currentColor" stroke-width="1.3"/>
-              <path d="M10 2v2M10 16v2M2 9h2M16 9h2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+        </div>
+
+        <div class="topbar-right">
+          <!-- Connection / Link Quality Pill -->
+          <div class="cockpit-pill" id="link-pill" title="Trạng thái tín hiệu kết nối thiết bị">
+            <span class="pill-dot pulse-led" style="background:var(--ok);color:var(--ok);"></span>
+            <span>Tín hiệu: <strong id="link-val" class="tabular-num">98%</strong></span>
+          </div>
+
+          <!-- UAV Flight State Pill -->
+          <div class="cockpit-pill flight-state-pill idle" id="flight-state-pill" title="Trạng thái hoạt động của UAV">
+            <span class="pill-dot"></span>
+            <span id="flight-state-label">Chờ bay</span>
+          </div>
+
+          <!-- ARMED / DISARMED Pill -->
+          <div class="cockpit-pill arm-pill disarmed" id="arm-pill" title="Trạng thái động cơ máy bay">
+            <span class="pill-dot"></span>
+            <span id="arm-label">Khóa motor</span>
+          </div>
+
+          <!-- GPS Fix Pill -->
+          <div class="cockpit-pill gps-pill" id="gps-pill" title="Trạng thái định vị vệ tinh GPS">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="3"/>
+              <path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>
             </svg>
-            <span id="gps-coords">N/A</span>
+            <span id="gps-status-text">GPS: 18 vệ tinh</span>
+          </div>
+
+          <!-- Battery Pill -->
+          <div class="cockpit-pill battery-pill ok" id="bat-pill" title="Điện áp và tỷ lệ dung lượng pin">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="2" y="7" width="16" height="10" rx="2" ry="2"/>
+              <line x1="20" y1="11" x2="20" y2="13"/>
+            </svg>
+            <span id="bat-display">16.4V · 95%</span>
+          </div>
+
+          <!-- Clock Display -->
+          <div class="clock-display" id="live-clock" title="Thời gian hệ thống">
+            <span class="clock-text">--:--:--</span>
           </div>
         </div>
       </header>
 
-      <div class="content">
+      <!-- Canvas Body (Page Specific) -->
+      <div class="canvas-body">
         {% block main_content %}{% endblock %}
       </div>
     </main>
   </div>
 
+  <!-- Global Telemetry Polling & Live Clock Script -->
   <script>
-  async function pollUAVState() {
-    try {
-      const r = await fetch('/api/uav-state');
-      const d = await r.json();
-      if (!d.success) return;
-      
-      const s = d.state;
-      
-      // Update System Topbar & Sidebar
-      const pct = Math.round(s.battery);
-      document.getElementById('bat-text').textContent = pct + 'V';
-      document.getElementById('bat-fill').setAttribute('width', Math.max(1, pct / 100 * 10));
-      document.getElementById('bat-chip').className = 'battery-chip ' + (pct > 50 ? 'ok' : pct > 20 ? 'warn' : 'crit');
-      
-      // if(s.gps.lat !== 0) document.getElementById('gps-coords').textContent = `${s.gps.lat.toFixed(5)}, ${s.gps.lon.toFixed(5)}`;
-      // document.getElementById('bat-text').textContent = 'N/A';
-      // document.getElementById('bat-fill').setAttribute('width', 0);
-      // document.getElementById('bat-chip').className = 'battery-chip warn';
+    // Live clock update
+    function updateClock() {
+      const now = new Date();
+      const timeStr = now.toLocaleTimeString('vi-VN', { hour12: false });
+      const clockEl = document.getElementById('live-clock');
+      if (clockEl) {
+        clockEl.textContent = timeStr;
+      }
+    }
+    setInterval(updateClock, 1000);
+    updateClock();
 
-      const pill = document.getElementById('arm-pill');
-      pill.className = 'status-pill ' + (s.armed ? 'armed' : 'disarmed');
-      document.getElementById('arm-label').textContent = s.armed ? 'ARMED' : 'DISARMED';
-      
-      const modeBadge = document.getElementById('mode-badge');
-      modeBadge.textContent = s.mode || '--';
-      modeBadge.className = 'mode-badge mode-' + (s.mode || 'MANUAL').toLowerCase();
+    function formatFlightTime(seconds) {
+      if (!seconds || seconds <= 0) return '00:00';
+      const m = Math.floor(seconds / 60);
+      const s = Math.floor(seconds % 60);
+      return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    }
 
-      // Dispatch global event cho Map, Dashboard, Stream
-      const event = new CustomEvent('uav-data-update', { detail: { state: s } });
-      window.dispatchEvent(event);
-      
-    } catch(_) {}
-  }
-  setInterval(pollUAVState, 1000);
-  pollUAVState();
+    const STATE_LABELS_VN = {
+      'IDLE': 'Chờ bay',
+      'TAKEOFF': 'Cất cánh',
+      'RUNNING': 'Đang bay',
+      'HOLD': 'Đang đo',
+      'LANDING': 'Hạ cánh'
+    };
+
+    // Poll UAV State from Server
+    async function pollUAVState() {
+      try {
+        const res = await fetch('/api/uav-state');
+        const data = await res.json();
+        if (!data.success) return;
+
+        const s = data.state || data;
+        const isArmed = s.armed !== undefined ? s.armed : data.armed;
+        const mode = (s.mode || data.mode || 'MANUAL').toUpperCase();
+        const fStateRaw = (s.flight_state || (s.flight && s.flight.flight_state) || (isArmed ? 'RUNNING' : 'IDLE')).toUpperCase();
+        const batteryPct = s.battery !== undefined ? s.battery : (data.battery || 0);
+        const voltage = (s.voltage || data.voltage || (14.2 + (batteryPct / 100) * 2.6)).toFixed(1);
+        const sats = (s.gps ? s.gps.satellites : (data.satellites || 18));
+        const flightSec = s.flight ? s.flight.flight_time : (s.flight_time || 0);
+
+        // 1. Update Flight State Pill
+        const statePill = document.getElementById('flight-state-pill');
+        const stateLabel = document.getElementById('flight-state-label');
+        if (statePill && stateLabel) {
+          stateLabel.textContent = STATE_LABELS_VN[fStateRaw] || fStateRaw;
+          statePill.className = `cockpit-pill flight-state-pill ${fStateRaw.toLowerCase()}`;
+        }
+
+        // 2. Update Arm Pill
+        const armPill = document.getElementById('arm-pill');
+        const armLabel = document.getElementById('arm-label');
+        if (armPill && armLabel) {
+          if (isArmed) {
+            armPill.className = 'cockpit-pill arm-pill armed';
+            armLabel.textContent = 'Đã bật motor';
+          } else {
+            armPill.className = 'cockpit-pill arm-pill disarmed';
+            armLabel.textContent = 'Khóa motor';
+          }
+        }
+
+        // 3. Update Battery Pill
+        const batPill = document.getElementById('bat-pill');
+        const batDisplay = document.getElementById('bat-display');
+        if (batPill && batDisplay) {
+          batDisplay.textContent = `${voltage}V · ${Math.round(batteryPct)}%`;
+          batPill.className = 'cockpit-pill battery-pill ' + (batteryPct > 50 ? 'ok' : (batteryPct > 20 ? 'warn' : 'crit'));
+        }
+
+        // 4. Update GPS Pill
+        const gpsStatus = document.getElementById('gps-status-text');
+        if (gpsStatus) {
+          gpsStatus.textContent = `GPS: ${sats} vệ tinh`;
+        }
+
+        // 5. Update Sidebar Flight Mode & Time
+        const sideMode = document.getElementById('sidebar-mode');
+        if (sideMode) {
+          const displayMode = STATE_LABELS_VN[fStateRaw] || mode;
+          sideMode.textContent = displayMode;
+          sideMode.className = `mode-tag mode-${fStateRaw.toLowerCase()}`;
+        }
+        const sideFlightTime = document.getElementById('sidebar-flight-time');
+        if (sideFlightTime) {
+          sideFlightTime.textContent = formatFlightTime(flightSec);
+        }
+
+        // Link status (Hiển thị trạng thái kết nối UART & CAN thực tế)
+        const linkVal = document.getElementById('link-val');
+        const linkPill = document.getElementById('link-pill');
+        if (linkVal) {
+          if (data.uart_connected !== undefined || data.can_connected !== undefined) {
+            const u = !!data.uart_connected;
+            const c = !!data.can_connected;
+            if (u && c) {
+              linkVal.textContent = 'UART+CAN OK';
+              if (linkPill) linkPill.title = 'Đã kết nối cả UART (Flight Controller) và CAN Bus (Cảm biến)';
+            } else if (u) {
+              linkVal.textContent = 'UART OK';
+              if (linkPill) linkPill.title = 'Đã kết nối UART, đang chờ dữ liệu CAN Bus';
+            } else if (c) {
+              linkVal.textContent = 'CAN OK';
+              if (linkPill) linkPill.title = 'Đã kết nối CAN Bus, đang chờ dữ liệu UART';
+            } else {
+              linkVal.textContent = 'Chờ nối';
+              if (linkPill) linkPill.title = 'Đang ở chế độ chờ tín hiệu UART / CAN';
+            }
+          } else {
+            linkVal.textContent = '98%';
+          }
+        }
+
+        // Dispatch Global Custom Event for Child Pages (Map, Analytics, Stream)
+        window.dispatchEvent(new CustomEvent('uav-telemetry-packet', { detail: { state: s, raw: data } }));
+        window.dispatchEvent(new CustomEvent('uav-data-update', { detail: { state: s, raw: data } }));
+
+      } catch (err) {
+        const linkVal = document.getElementById('link-val');
+        if (linkVal) linkVal.textContent = 'Mất kết nối';
+      }
+    }
+
+    setInterval(pollUAVState, 1000);
+    pollUAVState();
   </script>
   {% block body_script %}{% endblock %}
 </body>

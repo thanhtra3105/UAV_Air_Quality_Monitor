@@ -1,36 +1,72 @@
-let map, vehicleMarker;
+/**
+ * UAV Ground Control Station (GCS) - Main Cockpit Script
+ * Technical Cockpit / Industrial High-Density Standard
+ * Complies with vehicle-gcs-dashboard-design SKILL.md
+ */
+
+let map;
+let vehicleMarker = null;
+let vehicleTrail = null;
+let plannedRouteLine = null;
 const waypoints = [];
 const wpMarkers = [];
-let pathLine = null;
-let vehicleTrail = null;
-let currentHeading = 0;
-let dataPointsMarkers = [];
-let pollingInterval = null;
+let dataPointMarkers = [];
+let visitedWaypointData = {};
+let latestTelemetryState = null;
 
-const mapLayers = {
-  roadmap: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }),
-  satellite: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, attribution: '© Esri' }),
-  terrain: L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', { maxZoom: 17, attribution: '© OpenTopoMap' })
-};
+let currentHeading = 0;
+let currentPitch = 0;
+let currentRoll = 0;
+let isCameraSwapped = false;
 let currentLayerName = 'roadmap';
 
-function log(msg, type = '') {
-  const box = document.getElementById('log');
-  if (!box) return;
-  const el = document.createElement('div');
-  el.className = 'log-line ' + type;
-  const ts = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  el.textContent = `[${ts}] ${msg}`;
-  box.prepend(el);
-  while (box.children.length > 50) box.removeChild(box.lastChild);
+// Map tile layers: Street (OSM), Satellite (Esri), Hybrid (Google)
+const mapLayers = {
+  roadmap: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '© OpenStreetMap'
+  }),
+  satellite: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    maxZoom: 19,
+    attribution: '© Esri World Imagery'
+  }),
+  hybrid: L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
+    maxZoom: 20,
+    attribution: '© Google Satellite Hybrid'
+  })
+};
+
+// ==================== ICONS & VISUAL STYLING ====================
+
+/**
+ * Custom Precision Needle Waypoint Pin
+ * Mũi kim tam giác cắm chính xác 100% vào tọa độ
+ */
+function getWpIcon(index, isActive) {
+  const cls = isActive ? 'active-target' : '';
+  return L.divIcon({
+    className: 'wp-pin-wrapper',
+    html: `
+      <div class="wp-pin-container ${cls}">
+        <div class="wp-name-badge">WP${index + 1}</div>
+        <div class="wp-icon">${index + 1}</div>
+        <div class="wp-pin-tip"></div>
+      </div>
+    `,
+    iconSize: [40, 50],
+    iconAnchor: [20, 50], // Mũi nhọn cắm đúng tâm tọa độ GPS
+    popupAnchor: [0, -50]
+  });
 }
 
-function getDroneIcon(heading) {
-  // Tạo SVG cho drone với hướng quay
-  const svgHtml = `
-    <svg viewBox="0 0 40 40" width="40" height="40" xmlns="http://www.w3.org/2000/svg">
+/**
+ * UAV Vehicle Marker Icon (Technical Jet / Arrowhead)
+ */
+function getVehicleIcon(heading) {
+  const svg = `
+    <svg viewBox="0 0 44 44" width="44" height="44" xmlns="http://www.w3.org/2000/svg">
       <defs>
-        <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+        <filter id="uav-glow" x="-20%" y="-20%" width="140%" height="140%">
           <feGaussianBlur stdDeviation="2" result="blur" />
           <feMerge>
             <feMergeNode in="blur" />
@@ -38,620 +74,1136 @@ function getDroneIcon(heading) {
           </feMerge>
         </filter>
       </defs>
-      <!-- Thân chính -->
-      <circle cx="20" cy="20" r="8" fill="#3B82F6" stroke="#fff" stroke-width="1.5" filter="url(#glow)"/>
-      <!-- Cánh trước -->
-      <line x1="20" y1="8" x2="20" y2="2" stroke="#3B82F6" stroke-width="2.5" stroke-linecap="round"/>
-      <line x1="20" y1="8" x2="26" y2="5" stroke="#3B82F6" stroke-width="2" stroke-linecap="round"/>
-      <line x1="20" y1="8" x2="14" y2="5" stroke="#3B82F6" stroke-width="2" stroke-linecap="round"/>
-      <!-- Cánh sau -->
-      <line x1="20" y1="32" x2="20" y2="38" stroke="#3B82F6" stroke-width="2.5" stroke-linecap="round"/>
-      <line x1="20" y1="32" x2="26" y2="35" stroke="#3B82F6" stroke-width="2" stroke-linecap="round"/>
-      <line x1="20" y1="32" x2="14" y2="35" stroke="#3B82F6" stroke-width="2" stroke-linecap="round"/>
-      <!-- Cánh trái -->
-      <line x1="8" y1="20" x2="2" y2="20" stroke="#3B82F6" stroke-width="2.5" stroke-linecap="round"/>
-      <line x1="8" y1="20" x2="5" y2="14" stroke="#3B82F6" stroke-width="2" stroke-linecap="round"/>
-      <line x1="8" y1="20" x2="5" y2="26" stroke="#3B82F6" stroke-width="2" stroke-linecap="round"/>
-      <!-- Cánh phải -->
-      <line x1="32" y1="20" x2="38" y2="20" stroke="#3B82F6" stroke-width="2.5" stroke-linecap="round"/>
-      <line x1="32" y1="20" x2="35" y2="14" stroke="#3B82F6" stroke-width="2" stroke-linecap="round"/>
-      <line x1="32" y1="20" x2="35" y2="26" stroke="#3B82F6" stroke-width="2" stroke-linecap="round"/>
-      <!-- Chấm trung tâm -->
-      <circle cx="20" cy="20" r="2" fill="#fff"/>
+      <!-- Outer Target Ring -->
+      <circle cx="22" cy="22" r="18" fill="none" stroke="#1a4d8f" stroke-width="1.2" stroke-dasharray="3,3" opacity="0.6"/>
+      <!-- Drone Body -->
+      <path d="M22 6 L32 34 L22 28 L12 34 Z" fill="#1a4d8f" stroke="#00e5ff" stroke-width="2" stroke-linejoin="round" filter="url(#uav-glow)"/>
+      <!-- Center Sensor Dome -->
+      <circle cx="22" cy="22" r="3.5" fill="#ffffff" stroke="#1a4d8f" stroke-width="1.5"/>
     </svg>
   `;
-  
+
   return L.divIcon({
-    className: 'drone-icon',
-    html: `<div style="transform: rotate(${heading}deg); transition: transform 0.2s ease; width: 40px; height: 40px;">${svgHtml}</div>`,
-    iconSize: [40, 40],
-    iconAnchor: [20, 20],
-    popupAnchor: [0, -20]
+    className: 'vehicle-marker-wrap',
+    html: `<div id="vehicle-rotator" style="transform: rotate(${heading}deg); transition: transform 0.25s linear; width: 44px; height: 44px;">${svg}</div>`,
+    iconSize: [44, 44],
+    iconAnchor: [22, 22]
   });
 }
 
-function getWpIcon(num, isActive) {
-  const bg = isActive ? '#F59E0B' : '#3B82F6';
-  return L.divIcon({
-    className: 'wp-icon-wrap',
-    html: `<div style="background: ${bg}; color: #fff; width: 26px; height: 26px; border-radius: 50%; border: 2px solid #fff; display: flex; align-items: center; justify-content: center; font-family: 'Roboto Mono', monospace; font-size: 13px; font-weight: bold; box-shadow: 0 2px 5px rgba(0,0,0,0.2); transition: background 0.3s;">
-            ${num}
-           </div>`,
-    iconSize: [26, 26], iconAnchor: [13, 13]
+/**
+ * Cột mốc chủ quyền Quần đảo Hoàng Sa & Quần đảo Trường Sa
+ */
+function createSovereignMarker(lat, lon, title, isTruongSa = false) {
+  const markerIcon = L.divIcon({
+    className: 'sovereign-marker-container',
+    html: `
+      <div class="sovereign-territory-marker">
+        <div class="sovereign-flag-box">
+          <img src="/static/assets/flag_vn.png" alt="Cờ Tổ Quốc Việt Nam">
+        </div>
+        <div class="sovereign-badge ${isTruongSa ? 'truong-sa' : ''}">
+          🇻🇳 ${title}
+        </div>
+      </div>
+    `,
+    iconSize: [160, 70],
+    iconAnchor: [80, 35],
+    popupAnchor: [0, -35]
   });
+
+  const marker = L.marker([lat, lon], { icon: markerIcon, zIndexOffset: 800 }).addTo(map);
+  marker.bindPopup(`
+    <div style="text-align: center; padding: 6px 10px; font-family: var(--font);">
+      <strong style="color: #b42318; font-size: 13px; font-family: var(--font-display);">🇻🇳 ${title}</strong>
+      <div style="color: #157a3a; font-size: 11px; font-weight: 700; margin-top: 4px;">CHỦ QUYỀN KHÔNG THỂ TRANH CÃI CỦA VIỆT NAM</div>
+    </div>
+  `);
+  return marker;
 }
 
-
-function getAQILevelVN(aqiValue) {
-  const aqi = Number(aqiValue);
-  if (!Number.isFinite(aqi) || aqi <= 50) return 1;
-  if (aqi <= 100) return 2;
-  if (aqi <= 150) return 3;
-  if (aqi <= 200) return 4;
-  if (aqi <= 300) return 5;
-  return 6;
-}
-
-function getAQIColorVN(aqiValue) {
-  const colors = {1:'#00E400', 2:'#EAB308', 3:'#FF7E00', 4:'#FF0000', 5:'#8F3F97', 6:'#7E0023'};
-  return colors[getAQILevelVN(aqiValue)] || '#94A3B8';
-}
-
-function getDataPointIcon(aqi) {
-  let color = getAQIColorVN(aqi);
-  
-  return L.divIcon({
-    className: 'data-point-marker',
-    html: `<div style="background: ${color}; width: 14px; height: 14px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>`,
-    iconSize: [14, 14], iconAnchor: [7, 7]
-  });
-}
-
-// 16.07570
-// 108.15338
+// ==================== BẢN ĐỒ KHỞI TẠO ====================
 async function initMap() {
-  let center = [16.07570, 108.15338];
+  let defaultCenter = [16.0743537, 108.1522514]; // Vịnh Đà Nẵng
   try {
-    const pos = await fetch('/vehicle-position').then(r => r.json());
-    if (pos.success) center = [pos.lat, pos.lon];
-  } catch (_) { }
+    const res = await fetch('/vehicle-position');
+    const d = await res.json();
+    if (d.success && d.lat && d.lon) {
+      defaultCenter = [d.lat, d.lon];
+    }
+  } catch (_) {}
 
-  map = L.map('map', { zoomControl: false }).setView(center, 17);
+  map = L.map('map', {
+    zoomControl: false,
+    attributionControl: false
+  }).setView(defaultCenter, 16);
+
+  // Mặc định lớp đường phố
   mapLayers.roadmap.addTo(map);
+
+  // Điều khiển zoom góc dưới phải
   L.control.zoom({ position: 'bottomright' }).addTo(map);
-  vehicleMarker = L.marker(center, { 
-    icon: getDroneIcon(0), 
-    zIndexOffset: 1000,
-    title: 'UAV Position'
-  }).addTo(map);
-  
-  vehicleMarker.bindPopup('<b>🚁 UAV</b><br>Đang hoạt động', { offset: [0, -20] });
-  
-  vehicleTrail = L.polyline([], { 
-    color: '#3B82F6', 
-    weight: 3, 
-    opacity: 0.6, 
-    dashArray: '5, 8',
-    lineCap: 'round'
+
+  // Polyline vệt bay thực tế (Actual track) nét liền màu xanh
+  vehicleTrail = L.polyline([], {
+    color: '#157a3a',
+    weight: 3.5,
+    opacity: 0.9,
+    lineCap: 'round',
+    lineJoin: 'round'
   }).addTo(map);
 
-  map.on('click', e => addWaypoint(e.latlng.lat, e.latlng.lng));
+  // Polyline lộ trình dự kiến (Planned route)
+  plannedRouteLine = L.polyline([], {
+    color: '#0284c7',
+    weight: 2.5,
+    opacity: 0.8,
+    dashArray: '6, 8'
+  }).addTo(map);
 
-  initDataLoggingToggle();
+  // Vehicle Marker
+  vehicleMarker = L.marker(defaultCenter, {
+    icon: getVehicleIcon(currentHeading),
+    zIndexOffset: 1000
+  }).addTo(map);
+
+  // Nhấp chuột vào UAV hiển thị trạng thái hiện tại (đang bay hay đang đo)
+  vehicleMarker.on('click', function(e) {
+    L.DomEvent.stopPropagation(e);
+    const s = latestTelemetryState || {};
+    const flight = s.flight || s;
+    const currentWpNum = (flight.current_waypoint !== undefined ? flight.current_waypoint : (flight.current_wp ? flight.current_wp - 1 : 0)) + 1;
+    
+    let statusText = 'CHỜ BAY';
+    let statusBg = '#f1f5f9';
+    let statusColor = '#475569';
+    let statusBorder = '#cbd5e1';
+
+    const state = (flight.flight_state || flight.status || '').toUpperCase();
+
+    if (state === 'HOLD' || flight.is_holding) {
+      statusText = `ĐANG ĐO TẠI ĐIỂM #${currentWpNum}`;
+      statusBg = '#fef3c7';
+      statusColor = '#92400e';
+      statusBorder = '#fde68a';
+    } else if (state === 'RUNNING' || flight.is_flying) {
+      statusText = `ĐANG BAY ĐẾN ĐIỂM #${currentWpNum}`;
+      statusBg = '#e0f2fe';
+      statusColor = '#0369a1';
+      statusBorder = '#bae6fd';
+    } else if (state === 'TAKEOFF') {
+      statusText = 'ĐANG CẤT CÁNH';
+      statusBg = '#e0f2fe';
+      statusColor = '#0369a1';
+      statusBorder = '#bae6fd';
+    } else if (state === 'LANDING') {
+      statusText = 'ĐANG HẠ CÁNH';
+      statusBg = '#fee2e2';
+      statusColor = '#b91c1c';
+      statusBorder = '#fecaca';
+    }
+
+    const popupHtml = `
+      <div style="font-family: var(--font), sans-serif; text-align: center; padding: 4px 6px; min-width: 170px;">
+        <div style="font-size: 11px; font-weight: 700; color: #64748b; letter-spacing: 0.5px; margin-bottom: 5px;">TRẠNG THÁI UAV</div>
+        <div style="display: inline-block; padding: 5px 12px; border-radius: 4px; background: ${statusBg}; color: ${statusColor}; border: 1px solid ${statusBorder}; font-weight: 800; font-size: 12px;">
+          ${statusText}
+        </div>
+      </div>
+    `;
+
+    vehicleMarker.unbindPopup();
+    vehicleMarker.bindPopup(popupHtml, { minWidth: 170, className: 'custom-wp-popup' }).openPopup();
+  });
+
+  // Đánh dấu Quần Đảo Hoàng Sa & Trường Sa
+  createSovereignMarker(16.82847, 112.35718, 'QUẦN ĐẢO HOÀNG SA');
+  createSovereignMarker(9.51058, 112.89551, 'QUẦN ĐẢO TRƯỜNG SA', true);
+
+  // Cơ chế co giãn cờ Tổ quốc theo cấp số nhân zoom bản đồ
+  const updateZoomScale = () => {
+    if (!map) return;
+    const zoom = map.getZoom();
+    const flagW = Math.round(Math.max(28, Math.min(260, 22 * Math.pow(1.18, Math.max(0, zoom - 3)))));
+    const flagH = Math.round((flagW * 2) / 3);
+    const fontSize = Math.max(9, Math.min(16, Math.round(flagW * 0.15)));
+
+    const container = document.getElementById('map');
+    if (container) {
+      container.style.setProperty("--vn-flag-w", `${flagW}px`);
+      container.style.setProperty("--vn-flag-h", `${flagH}px`);
+      container.style.setProperty("--vn-flag-font", `${fontSize}px`);
+    }
+  };
+  map.on("zoom", updateZoomScale);
+  updateZoomScale();
+
+  // Click bản đồ để thêm Waypoint
+  map.on('click', e => {
+    addWaypoint(e.latlng.lat, e.latlng.lng);
+  });
+
+  // Đổi lớp bản đồ (Roadmap, Satellite, Hybrid)
+  setupMapLayerSwitching();
+
+  // Khởi động đồng bộ dữ liệu
   loadCollectedData();
-  monitorHoldStatus();
+  loadCurrentMission();
 
-  setInterval(updatePosition, 1000);
-  setInterval(updateVehicleInfo, 1500);
-  setInterval(updateMissionProgress, 1700);
-  setInterval(loadCollectedData, 5000);
-
-  var hoangSaIcon = L.divIcon({
-    className: 'hoangsa-marker',
-    html: `
-      <div style="display: flex; flex-direction: column; align-items: center; cursor: pointer;">
-        <img src="/static/assets/flag_vn.png" 
-             style="width: 48px; height: 32px; border: 2px solid #FFD700; box-shadow: 0 2px 6px rgba(0,0,0,0.3); background: white; padding: 2px; object-fit: cover;"
-             alt="Việt Nam">
-        <div style="background: #DC2626; color: #FFD700; padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: bold; margin-top: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.2); border: 1px solid #FFD700;">
-          🏝️ QUẦN ĐẢO HOÀNG SA
-        </div>
-      </div>
-    `,
-    iconSize: [140, 65],
-    popupAnchor: [0, -35]
-  });
-  
-  L.marker([16.82847, 112.35718], { icon: hoangSaIcon })
-    .addTo(map)
-    .bindPopup('<b>🏝️ Quần đảo Hoàng Sa</b><br>🇻🇳 Chủ quyền của Việt Nam');
-
-  var truongSaIcon = L.divIcon({
-    className: 'truongsa-marker',
-    html: `
-      <div style="display: flex; flex-direction: column; align-items: center; cursor: pointer;">
-        <img src="/static/assets/flag_vn.png" 
-             style="width: 48px; height: 32px; border: 2px solid #FFD700; box-shadow: 0 2px 6px rgba(0,0,0,0.3); background: white; padding: 2px; object-fit: cover;"
-             alt="Việt Nam">
-        <div style="background: linear-gradient(135deg, #059669 0%, #047857 100%); color: #FFD700; padding: 4px 12px; border-radius: 24px; font-size: 11px; font-weight: bold; white-space: nowrap; margin-top: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.2); border: 1px solid rgba(255,215,0,0.5);">
-          🏝️ QUẦN ĐẢO TRƯỜNG SA
-        </div>
-      </div>
-    `,
-    iconSize: [150, 65],
-    popupAnchor: [0, -35]
-  });
-  
-  L.marker([9.51058, 112.89551], { icon: truongSaIcon })
-    .addTo(map)
-    .bindPopup(`
-      <div style="text-align: center; min-width: 180px; padding: 5px;">
-        <strong style="color: #059669; font-size: 14px;">🏝️ Quần đảo Trường Sa</strong><br>
-        <span style="font-size: 11px; color: #166534;">🇻🇳 Chủ quyền của Việt Nam</span>
-      </div>
-    `);
+  // Lắng nghe sự kiện viễn trắc tổng
+  window.addEventListener('uav-telemetry-packet', handleTelemetryPacket);
 }
 
-function initDataLoggingToggle() {
-  const toggle = document.getElementById('data-logging-toggle');
-  if (toggle) {
-    toggle.addEventListener('change', async function() {
-      try {
-        const response = await fetch('/set-data-logging', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ enabled: this.checked })
-        });
-        const data = await response.json();
-        log(`Ghi dữ liệu cảm biến: ${data.enabled ? 'BẬT' : 'TẮT'}`, data.enabled ? 'ok' : 'warn');
-      } catch (err) {
-        console.error(err);
+// Chuyển đổi lớp bản đồ
+function setupMapLayerSwitching() {
+  const btns = document.querySelectorAll('.layer-btn');
+  btns.forEach(btn => {
+    btn.addEventListener('click', function() {
+      btns.forEach(b => b.classList.remove('active'));
+      this.classList.add('active');
+      const targetLayer = this.getAttribute('data-layer');
+      if (mapLayers[targetLayer] && targetLayer !== currentLayerName) {
+        map.removeLayer(mapLayers[currentLayerName]);
+        mapLayers[targetLayer].addTo(map);
+        currentLayerName = targetLayer;
+
+        // Cập nhật màu sắc vệt bay tương phản trên vệ tinh
+        if (targetLayer === 'satellite' || targetLayer === 'hybrid') {
+          if (vehicleTrail) vehicleTrail.setStyle({ color: '#00e676' });
+          if (plannedRouteLine) plannedRouteLine.setStyle({ color: '#00e5ff' });
+        } else {
+          if (vehicleTrail) vehicleTrail.setStyle({ color: '#157a3a' });
+          if (plannedRouteLine) plannedRouteLine.setStyle({ color: '#0284c7' });
+        }
       }
     });
-    
-    // Lấy trạng thái hiện tại
-    fetch('/get-data-logging')
-      .then(r => r.json())
-      .then(data => {
-        toggle.checked = data.enabled;
-      });
-  }
+  });
 }
 
-async function monitorHoldStatus() {
-  setInterval(async () => {
-    try {
-      const tele = await fetch('/api/telemetry').then(r => r.json());
-      if (tele.success && tele.telemetry.is_holding) {
-        const holdDiv = document.getElementById('hold-progress');
-        const holdBar = document.getElementById('hold-bar');
-        const holdCounter = document.getElementById('hold-counter');
-        const holdStatus = document.getElementById('hold-status');
-        
-        holdDiv.classList.add('active');
-        const samples = tele.telemetry.hold_samples || 0;
-        const total = tele.telemetry.hold_total || 25;
-        const percent = (samples / total) * 100;
-        holdBar.style.width = percent + '%';
-        holdCounter.textContent = `${samples}/${total}`;
-        holdStatus.textContent = `Đang thu thập dữ liệu không khí...`;
-        
-        if (samples >= total) {
-          setTimeout(() => holdDiv.classList.remove('active'), 3000);
-        }
-      } else {
-        document.getElementById('hold-progress').classList.remove('active');
-      }
-    } catch (_) {}
-  }, 1000);
-}
+// ==================== XỬ LÝ VIỄN TRẮC & HUD ====================
+function handleTelemetryPacket(event) {
+  const s = event.detail.state;
+  if (!s) return;
+  latestTelemetryState = s;
 
-async function loadCollectedData() {
-  try {
-    const response = await fetch('/get-collected-data');
-    const data = await response.json();
-    
-    if (data.success && data.data) {
-      // Cập nhật danh sách hiển thị
-      updateDataList(data.data);
-      
-      // Cập nhật marker trên bản đồ
-      updateDataMarkers(data.data);
-      
-      // Cập nhật số lượng
-      document.getElementById('data-count').textContent = `(${data.data.length})`;
+  // 1. Cập nhật vị trí & xoay UAV
+  const lat = s.gps ? s.gps.lat : s.latitude;
+  const lon = s.gps ? s.gps.lon : s.longitude;
+  const alt = s.gps ? s.gps.alt : (s.altitude || 0);
+  const spd = s.gps ? s.gps.speed : (s.speed || 0);
+  const hdg = s.gps ? s.gps.heading : (s.heading || 0);
+  const pitch = s.attitude ? s.attitude.pitch : (s.pitch || 0);
+  const roll = s.attitude ? s.attitude.roll : (s.roll || 0);
+
+  if (lat && lon && vehicleMarker) {
+    const latlng = [lat, lon];
+    vehicleMarker.setLatLng(latlng);
+
+    // Xoay SVG marker
+    const rot = document.getElementById('vehicle-rotator');
+    if (rot) {
+      rot.style.transform = `rotate(${hdg}deg)`;
     }
-  } catch (err) {
-    console.error('Lỗi load dữ liệu:', err);
+
+    // Thêm điểm vào vệt bay
+    if (s.armed || (s.flight && s.flight.is_flying)) {
+      vehicleTrail.addLatLng(latlng);
+    }
+  }
+
+  // 2. Cập nhật Artificial Horizon & Heading Tape
+  updateCockpitHUD(pitch, roll, hdg);
+
+  // 3. Cập nhật các chỉ số đo cảm biến (2 giây scannable)
+  updateSensorMetrics(s);
+
+  // 4. Cập nhật tiến độ Holding nếu UAV đang dừng lấy mẫu
+  updateHoldingProgress(s);
+
+  // 5. Cập nhật chỉ số waypoint hiện tại
+  updateWaypointStatus(s);
+
+  // 6. Ghi nhận dữ liệu và vẽ đồ thị độ cao thời gian thực (Altitude Chart)
+  recordAltitudePoint(alt, s.target_altitude || 35.0, s.terrain_altitude || 7.0);
+
+  // 7. Đồng bộ tức thời dữ liệu đo đạc tại các điểm khi nhận packet viễn trắc
+  const collectedList = s.collected_data || (event.detail.raw && event.detail.raw.collected_data);
+  if (collectedList && Array.isArray(collectedList) && collectedList.length > 0) {
+    const updated = matchCollectedDataToWaypoints(collectedList);
+    const tableBody = document.getElementById('collected-data-table-body');
+    const isTableEmpty = tableBody && (tableBody.children.length <= 1 && tableBody.textContent.includes('Chưa có'));
+    if (updated || isTableEmpty) {
+      renderCollectedDataTable(collectedList);
+      renderDataPointsOnMap(collectedList);
+      renderWaypointList();
+    }
   }
 }
 
-function updateDataList(dataPoints) {
-  const container = document.getElementById('data-list');
-  if (!container) return;
-  
-  if (!dataPoints || dataPoints.length === 0) {
-    container.innerHTML = '<div style="text-align:center;color:var(--txt3);padding:20px;">Chưa có dữ liệu</div>';
+function updateCockpitHUD(pitch, roll, hdg) {
+  currentPitch = pitch;
+  currentRoll = roll;
+  currentHeading = hdg;
+
+  // 1. Attitude Indicator Gauge (Pitch translateY & Roll rotate)
+  const sphere = document.getElementById('horizon-sphere');
+  if (sphere) {
+    const translateY = Math.max(-26, Math.min(26, pitch * 1.3));
+    sphere.style.transform = `translateY(${translateY}px) rotate(${-roll}deg)`;
+  }
+  const pitchEl = document.getElementById('val-pitch');
+  const rollEl = document.getElementById('val-roll');
+  if (pitchEl) pitchEl.textContent = `${pitch >= 0 ? '+' : ''}${pitch.toFixed(1)}`;
+  if (rollEl) rollEl.textContent = `${roll >= 0 ? '+' : ''}${roll.toFixed(1)}`;
+
+  // 2. Compass Dial Gauge (Needle rotates to heading)
+  const needle = document.getElementById('compass-needle');
+  if (needle) {
+    needle.style.transform = `rotate(${hdg}deg)`;
+  }
+  const hdgEl = document.getElementById('val-heading');
+  if (hdgEl) {
+    hdgEl.textContent = String(hdg.toFixed(1)).padStart(5, '0');
+  }
+}
+
+function updateSensorMetrics(s) {
+  const sens = s.sensors || s;
+
+  // Cập nhật số liệu cảm biến dạng chip gọn gàng
+  setVal('val-pm25', sens.pm25 !== undefined ? sens.pm25.toFixed(1) : '--');
+  setVal('val-pm10', sens.pm10 !== undefined ? sens.pm10.toFixed(1) : '--');
+  setVal('val-eco2', sens.eco2 !== undefined ? Math.round(sens.eco2) : (sens.co2 ? Math.round(sens.co2) : '--'));
+  setVal('val-tvoc', sens.tvoc !== undefined ? Math.round(sens.tvoc) : '--');
+  setVal('val-co', sens.co !== undefined ? sens.co.toFixed(2) : '--');
+  setVal('val-no2', sens.no2 !== undefined ? sens.no2.toFixed(1) : '--');
+  setVal('val-temp', sens.temp !== undefined ? sens.temp.toFixed(1) : (sens.temperature ? sens.temperature.toFixed(1) : '--'));
+  setVal('val-hum', sens.hum !== undefined ? sens.hum.toFixed(1) : (sens.humidity ? sens.humidity.toFixed(1) : '--'));
+
+  // Flight mini status bar
+  const alt = s.gps ? s.gps.alt : (s.altitude || 0);
+  const spd = s.gps ? s.gps.speed : (s.speed || 0);
+  setVal('val-alt', `${alt.toFixed(1)}m`);
+  setVal('val-spd', `${spd.toFixed(1)}m/s`);
+  setVal('val-dist', (s.flight && s.flight.distance_to_wp) ? `${s.flight.distance_to_wp.toFixed(0)}m` : '--');
+
+  const batPct = s.battery !== undefined ? s.battery : 0;
+  const voltage = (s.voltage !== undefined ? Number(s.voltage) : (14.2 + (batPct / 100) * 2.6)).toFixed(1);
+  const batEl = document.getElementById('val-bat');
+  if (batEl) {
+    batEl.textContent = `${Math.round(batPct)}% · ${voltage}V`;
+    batEl.style.color = batPct > 50 ? 'var(--ok)' : (batPct > 20 ? 'var(--warn)' : 'var(--danger)');
+  }
+
+  // AQI Compact Badge (Thang đo Việt Nam VN_AQI 0-500)
+  const aqi = sens.aqi !== undefined ? Math.round(sens.aqi) : 1;
+  const aqiCat = sens.aqi_category || (aqi <= 50 ? 'Tốt' : (aqi <= 100 ? 'Trung bình' : (aqi <= 150 ? 'Kém' : (aqi <= 200 ? 'Xấu' : (aqi <= 300 ? 'Rất xấu' : 'Nguy hại')))));
+  setVal('aqi-score-num', aqi);
+  setVal('aqi-cat-name', aqiCat);
+
+  const aqiBadge = document.getElementById('aqi-badge');
+  if (aqiBadge) {
+    let border = '#157a3a', bg = '#e2f3e8', text = '#157a3a';
+    if (aqi <= 50) {
+      border = '#157a3a'; bg = '#e2f3e8'; text = '#157a3a';
+    } else if (aqi <= 100) {
+      border = '#b25e00'; bg = '#fff1dc'; text = '#b25e00';
+    } else if (aqi <= 150) {
+      border = '#e65100'; bg = '#ffe0b2'; text = '#e65100';
+    } else if (aqi <= 200) {
+      border = '#b42318'; bg = '#fde7e5'; text = '#b42318';
+    } else if (aqi <= 300) {
+      border = '#7b1fa2'; bg = '#f3e5f5'; text = '#7b1fa2';
+    } else {
+      border = '#4a148c'; bg = '#ede7f6'; text = '#4a148c';
+    }
+    aqiBadge.style.borderColor = border;
+    aqiBadge.style.background = bg;
+    aqiBadge.style.color = text;
+  }
+}
+
+function setVal(id, text) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = text;
+}
+
+function updateHoldingProgress(s) {
+  const flight = s.flight || s;
+  const isHolding = flight.is_holding;
+  const wrap = document.getElementById('holding-wrap');
+  const bar = document.getElementById('holding-fill');
+  const ratio = document.getElementById('holding-ratio');
+
+  if (!wrap || !bar || !ratio) return;
+
+  if (isHolding) {
+    wrap.classList.add('active');
+    const samples = flight.hold_samples || 0;
+    const total = flight.hold_total || 10;
+    const pct = Math.min(100, Math.round((samples / total) * 100));
+    bar.style.width = `${pct}%`;
+    ratio.textContent = `${samples}/${total} (${pct}%)`;
+  } else {
+    wrap.classList.remove('active');
+  }
+}
+
+function getDistanceFromLatLng(lat1, lon1, lat2, lon2) {
+  if (lat1 === undefined || lon1 === undefined || lat2 === undefined || lon2 === undefined) return 999999;
+  if (typeof L !== 'undefined' && L.latLng) {
+    try {
+      return L.latLng(lat1, lon1).distanceTo(L.latLng(lat2, lon2));
+    } catch (_) {}
+  }
+  const R = 6371000;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+}
+
+function matchCollectedDataToWaypoints(collectedList) {
+  if (!collectedList || !Array.isArray(collectedList) || waypoints.length === 0) return false;
+  let updated = false;
+
+  waypoints.forEach((wp) => {
+    let bestMatch = null;
+    let minDistance = 35; // Chỉ gán dữ liệu đo nếu vị trí đo thực tế nằm gần điểm đo này (< 35m)
+
+    collectedList.forEach(item => {
+      const itemLat = item.lat;
+      const itemLon = item.lon !== undefined ? item.lon : item.lng;
+      const d = getDistanceFromLatLng(wp.lat, wp.lng, itemLat, itemLon);
+      if (d < minDistance) {
+        minDistance = d;
+        bestMatch = item;
+      }
+    });
+
+    if (bestMatch && wp.measuredData !== bestMatch) {
+      wp.measuredData = bestMatch;
+      updated = true;
+    }
+  });
+
+  return updated;
+}
+
+function showWaypointAirQualityPopup(wpIndex, marker) {
+  if (wpIndex < 0 || wpIndex >= waypoints.length) return;
+  const wp = waypoints[wpIndex];
+  const targetMarker = marker || wpMarkers[wpIndex];
+  if (!targetMarker) return;
+
+  // CHỈ lấy dữ liệu nếu điểm này ĐÃ ĐƯỢC ĐO tại vị trí thực tế trong lộ trình
+  const data = wp.measuredData;
+  const s = latestTelemetryState || {};
+  const flight = s.flight || s;
+  const currentIdx = flight.current_waypoint !== undefined ? flight.current_waypoint : (flight.current_wp ? flight.current_wp - 1 : 0);
+  const isHoldingHere = (wpIndex === currentIdx && flight.is_holding);
+
+  let contentHtml = `
+    <div class="wp-measurement-popup">
+      <div class="wp-popup-title-bar">
+        <span class="wp-popup-name">ĐIỂM ĐO #${wpIndex + 1}</span>
+  `;
+
+  if (data) {
+    const aqi = data.aqi || 1;
+    let aqiColor = '#15803d';
+    let aqiBg = '#dcfce7';
+    let aqiCat = data.aqi_category || 'Tốt';
+
+    if (aqi <= 50) {
+      aqiColor = '#15803d'; aqiBg = '#dcfce7'; aqiCat = 'Tốt';
+    } else if (aqi <= 100) {
+      aqiColor = '#b45309'; aqiBg = '#fef3c7'; aqiCat = 'Trung bình';
+    } else if (aqi <= 150) {
+      aqiColor = '#c2410c'; aqiBg = '#ffedd5'; aqiCat = 'Kém';
+    } else if (aqi <= 200) {
+      aqiColor = '#b91c1c'; aqiBg = '#fee2e2'; aqiCat = 'Xấu';
+    } else {
+      aqiColor = '#7e0023'; aqiBg = '#fce7f3'; aqiCat = 'Rất xấu';
+    }
+
+    contentHtml += `
+        <span class="wp-badge-status done">ĐÃ HOÀN TẤT</span>
+      </div>
+      <div class="wp-popup-aqi-box" style="background:${aqiBg}; border-color:${aqiColor}40;">
+        <span class="wp-aqi-text" style="color:${aqiColor};">VN_AQI: <b>${aqi}</b> (${aqiCat})</span>
+        <span style="font-size: 9.5px; color:${aqiColor}; font-weight: 700;">${data.sample_count || 10} mẫu</span>
+      </div>
+      <div class="wp-popup-metrics-table">
+        <div class="wp-metric-row"><span class="lbl">Bụi mịn PM2.5:</span><span class="val">${(data.pm25 || 0).toFixed(1)} µg/m³</span></div>
+        <div class="wp-metric-row"><span class="lbl">Bụi mịn PM10:</span><span class="val">${(data.pm10 || (data.pm25 * 1.5) || 0).toFixed(1)} µg/m³</span></div>
+        <div class="wp-metric-row"><span class="lbl">Khí CO₂ (eCO₂):</span><span class="val">${Math.round(data.eco2 || 0)} mg/m³</span></div>
+        <div class="wp-metric-row"><span class="lbl">Hợp chất TVOC:</span><span class="val">${Math.round(data.tvoc || 0)} ppb</span></div>
+        <div class="wp-metric-row"><span class="lbl">Khí CO:</span><span class="val">${(data.co || 0).toFixed(2)} mg/m³</span></div>
+        <div class="wp-metric-row"><span class="lbl">Khí NO₂:</span><span class="val">${(data.no2 || 0).toFixed(1)} µg/m³</span></div>
+        <div class="wp-metric-row"><span class="lbl">Nhiệt độ / Độ ẩm:</span><span class="val">${(data.temp || data.temperature || 29).toFixed(1)}°C | ${(data.hum || data.humidity || 65).toFixed(1)}%</span></div>
+      </div>
+      <div class="wp-popup-meta">
+        <div>Tọa độ: ${wp.lat.toFixed(5)}, ${wp.lng.toFixed(5)}</div>
+        <div>Thời gian đo: ${new Date(data.time).toLocaleTimeString('vi-VN')}</div>
+      </div>
+    `;
+  } else if (isHoldingHere) {
+    const samples = flight.hold_samples || 0;
+    const total = flight.hold_total || 10;
+    contentHtml += `
+        <span class="wp-badge-status measuring">ĐANG ĐO</span>
+      </div>
+      <div style="background:#fef3c7;border:1px solid #fde68a;border-radius:4px;padding:8px 10px;font-size:11px;color:#92400e;margin-bottom:6px;">
+        <div style="font-weight:700;">Đang lấy mẫu chất lượng không khí...</div>
+        <div style="margin-top:3px;font-size:10.5px;">Tiến độ: <b>${samples}/${total}</b> mẫu (${Math.round(samples/total*100)}%)</div>
+      </div>
+      <div style="font-size:10px;color:#64748b;margin-bottom:6px;line-height:1.4;">
+        Số liệu đo đạc sẽ hiển thị đầy đủ sau khi UAV hoàn thành 10 mẫu đo.
+      </div>
+      <div class="wp-popup-meta">
+        <div>Tọa độ: ${wp.lat.toFixed(5)}, ${wp.lng.toFixed(5)}</div>
+      </div>
+    `;
+  } else {
+    contentHtml += `
+        <span class="wp-badge-status pending">CHƯA ĐO</span>
+      </div>
+      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;padding:8px 10px;font-size:11px;color:#64748b;margin-bottom:6px;line-height:1.4;">
+        Điểm đo này chưa có dữ liệu. UAV sẽ tiến hành đo sau khi bay tới vị trí này.
+      </div>
+      <div class="wp-popup-meta">
+        <div>Tọa độ: ${wp.lat.toFixed(5)}, ${wp.lng.toFixed(5)}</div>
+      </div>
+    `;
+  }
+
+  contentHtml += `</div>`;
+
+  targetMarker.unbindPopup();
+  targetMarker.bindPopup(contentHtml, {
+    maxWidth: 280,
+    minWidth: 230,
+    className: 'custom-wp-popup'
+  }).openPopup();
+}
+
+function openWaypointPopup(idx) {
+  if (idx < 0 || idx >= waypoints.length) return;
+  const wp = waypoints[idx];
+  const marker = wpMarkers[idx];
+  if (map && wp) {
+    map.setView([wp.lat, wp.lng], Math.max(16, map.getZoom()), { animate: true });
+    if (marker) {
+      showWaypointAirQualityPopup(idx, marker);
+    }
+  }
+}
+
+let lastKnownWpIdx = -1;
+let lastKnownHolding = false;
+let lastKnownHoldSamples = -1;
+
+function updateWaypointStatus(s) {
+  const flight = s.flight || s;
+  const currentIdx = flight.current_waypoint !== undefined ? flight.current_waypoint : (flight.current_wp ? flight.current_wp - 1 : 0);
+  const isHolding = !!flight.is_holding;
+  const holdSamples = flight.hold_samples || 0;
+
+  // Cập nhật lại danh sách nếu chuyển waypoint hoặc đổi trạng thái đo hoặc thay đổi số mẫu
+  if (currentIdx !== lastKnownWpIdx || isHolding !== lastKnownHolding || (isHolding && holdSamples !== lastKnownHoldSamples)) {
+    lastKnownWpIdx = currentIdx;
+    lastKnownHolding = isHolding;
+    lastKnownHoldSamples = holdSamples;
+    renderWaypointList();
+  }
+
+  // Cập nhật highlight cho danh sách Waypoint
+  const items = document.querySelectorAll('.wp-compact-item');
+  items.forEach((item, idx) => {
+    item.classList.remove('current-target', 'visited');
+    const w = waypoints[idx];
+    if (w && w.measuredData) {
+      item.classList.add('visited');
+    } else if (idx === currentIdx && (flight.is_flying || flight.is_holding)) {
+      item.classList.add('current-target');
+    }
+  });
+
+  // Cập nhật icon trên bản đồ
+  wpMarkers.forEach((m, idx) => {
+    const isActive = (idx === currentIdx && (flight.is_flying || flight.is_holding));
+    m.setIcon(getWpIcon(idx, isActive));
+  });
+}
+
+// ==================== QUẢN LÝ WAYPOINT & MISSION ====================
+function addWaypoint(lat, lng) {
+  // Chỉ lưu trữ và hiển thị tọa độ GPS (lat, lng), không lưu độ cao, ban đầu chưa có dữ liệu đo
+  const wp = { lat: Number(lat), lng: Number(lng), measuredData: null };
+  waypoints.push(wp);
+  const currentIdx = waypoints.length - 1;
+
+  const marker = L.marker([lat, lng], {
+    icon: getWpIcon(currentIdx, false),
+    draggable: true
+  }).addTo(map);
+
+  // Bấm vào waypoint trên bản đồ để xem chi tiết chất lượng không khí
+  marker.on('click', function(e) {
+    L.DomEvent.stopPropagation(e);
+    const idx = wpMarkers.indexOf(marker);
+    if (idx !== -1) {
+      showWaypointAirQualityPopup(idx, marker);
+    }
+  });
+
+  marker.on('dragend', function(e) {
+    const pos = e.target.getLatLng();
+    const idx = wpMarkers.indexOf(marker);
+    if (idx !== -1) {
+      waypoints[idx].lat = pos.lat;
+      waypoints[idx].lng = pos.lng;
+      waypoints[idx].measuredData = null; // Tọa độ thay đổi -> reset dữ liệu đo
+      updateRouteLine();
+      renderWaypointList();
+    }
+  });
+
+  wpMarkers.push(marker);
+  updateRouteLine();
+  renderWaypointList();
+}
+
+function updateRouteLine() {
+  if (!plannedRouteLine) return;
+  const pts = waypoints.map(w => [w.lat, w.lng]);
+  plannedRouteLine.setLatLngs(pts);
+}
+
+function renderWaypointList() {
+  const listEl = document.getElementById('wp-list-container');
+  const countEl = document.getElementById('wp-count');
+  if (!listEl) return;
+
+  if (countEl) countEl.textContent = `${waypoints.length}`;
+
+  if (waypoints.length === 0) {
+    listEl.innerHTML = `<div style="text-align:center;color:var(--text-3);padding:10px;font-size:10.5px;">Chưa có điểm đo. Nhấp chuột lên bản đồ để thêm điểm.</div>`;
     return;
   }
-  
-  container.innerHTML = dataPoints.slice().reverse().map(point => {
-    const date = new Date(point.time);
-    const timeStr = date.toLocaleTimeString('vi-VN');
-    const aqiClass = `aqi-${getAQILevelVN(point.aqi)}`;
-    
+
+  const s = latestTelemetryState || {};
+  const flight = s.flight || s;
+  const currentIdx = flight.current_waypoint !== undefined ? flight.current_waypoint : (flight.current_wp ? flight.current_wp - 1 : 0);
+
+  // Hiển thị danh sách điểm đo kèm trạng thái và nút xem chi tiết
+  listEl.innerHTML = waypoints.map((w, i) => {
+    const hasData = !!w.measuredData;
+    const isTarget = (i === currentIdx && (flight.is_flying || flight.is_holding));
+
+    let statusChip = '';
+    if (hasData) {
+      const wpAqi = w.measuredData.aqi || 1;
+      statusChip = `<span class="wp-status-chip done" title="Bấm để xem số liệu đo">Đã đo (AQI ${wpAqi})</span>`;
+    } else if (i === currentIdx && flight.is_holding) {
+      const samples = flight.hold_samples || 0;
+      statusChip = `<span class="wp-status-chip active" style="background:#fef3c7;color:#92400e;border:1px solid #fde68a;">Đang đo (${samples}/10)</span>`;
+    } else if (i === currentIdx && (flight.is_flying || flight.flight_state === 'RUNNING')) {
+      statusChip = `<span class="wp-status-chip" style="background:#e0f2fe;color:#0369a1;border:1px solid #bae6fd;">Đang bay tới</span>`;
+    } else {
+      statusChip = `<span class="wp-status-chip pending">Chờ bay</span>`;
+    }
+
     return `
-      <div class="data-item ${aqiClass}" onclick="flyToDataPoint(${point.lat}, ${point.lon})">
-        <div style="display: flex; justify-content: space-between;">
-          <strong>WP${point.waypoint_index + 1}</strong>
-          <span style="font-size: 0.65rem;">${timeStr}</span>
+      <div class="wp-compact-item ${hasData ? 'visited' : ''} ${isTarget ? 'current-target' : ''}" id="wp-row-${i}" onclick="openWaypointPopup(${i})" title="Bấm để xem chi tiết điểm đo #${i + 1}">
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span style="font-family:var(--mono);font-weight:800;color:var(--primary);">#${i + 1}</span>
+          <span style="font-family:var(--mono);font-size:10px;color:var(--text);font-weight:600;">${w.lat.toFixed(5)}, ${w.lng.toFixed(5)}</span>
+          ${statusChip}
         </div>
-        <div style="display: flex; gap: 12px; margin-top: 4px; font-size: 0.7rem;">
-          <span>📍 ${point.lat.toFixed(5)}, ${point.lon.toFixed(5)}</span>
-          <span>⬆️ ${point.alt.toFixed(0)}m</span>
-        </div>
-        <div style="display: flex; gap: 8px; margin-top: 4px; flex-wrap: wrap;">
-          <span style="background: #EF4444; padding: 2px 6px; border-radius: 4px;">PM2.5: ${point.pm25.toFixed(1)}</span>
-          <span style="background: #F59E0B; padding: 2px 6px; border-radius: 4px;">CO₂: ${point.eco2.toFixed(0)}</span>
-          <span style="background: #8B5CF6; padding: 2px 6px; border-radius: 4px;">AQI: ${point.aqi}</span>
-        </div>
-        <div style="display: flex; gap: 8px; margin-top: 4px; font-size: 0.65rem; color: var(--txt3);">
-          <span>🌡️ ${point.temp.toFixed(1)}°C</span>
-          <span>💧 ${point.hum.toFixed(1)}%</span>
-          <span>📊 ${point.sample_count || 0} mẫu</span>
-        </div>
+        <button class="wp-del-btn" onclick="event.stopPropagation(); removeWaypoint(${i});" title="Xóa điểm này">×</button>
       </div>
     `;
   }).join('');
 }
 
-function updateDataMarkers(dataPoints) {
-  // Xóa marker cũ
-  dataPointsMarkers.forEach(marker => map.removeLayer(marker));
-  dataPointsMarkers = [];
-  
-  // Thêm marker mới
-  dataPoints.forEach(point => {
-    const popupContent = `
-      <div style="font-family: 'Inter', sans-serif; min-width: 200px;">
-        <strong>📍 Điểm đo #${point.waypoint_index + 1}</strong><br>
-        <small>${new Date(point.time).toLocaleString('vi-VN')}</small><br>
-        <hr style="margin: 8px 0;">
-        <table style="width: 100%; font-size: 12px;">
-          <tr><td>🌍 Vị trí:</td><td>${point.lat.toFixed(6)}, ${point.lon.toFixed(6)}</td></tr>
-          <tr><td>⬆️ Độ cao:</td><td>${point.alt.toFixed(1)} m</td></tr>
-          <tr><td>🌫️ PM2.5:</td><td><b>${point.pm25.toFixed(1)} µg/m³</b></td></tr>
-          <tr><td>💨 eCO₂:</td><td><b>${point.eco2.toFixed(0)} ppm</b></td></tr>
-          <tr><td>🧪 TVOC:</td><td><b>${point.tvoc.toFixed(0)} ppb</b></td></tr>
-          <tr><td>🌡️ Nhiệt độ:</td><td>${point.temp.toFixed(1)} °C</td></tr>
-          <tr><td>💧 Độ ẩm:</td><td>${point.hum.toFixed(1)} %</td></tr>
-          <tr><td>📊 AQI:</td><td><b style="color: ${getAQIColorVN(point.aqi)}">${point.aqi}</b></td></tr>
-        </table>
-        <hr style="margin: 8px 0;">
-        <small>📊 ${point.sample_count || 0} lần đo</small>
-      </div>
-    `;
-    
-    const marker = L.marker([point.lat, point.lon], {
-      icon: getDataPointIcon(point.aqi),
-      zIndexOffset: 500
-    }).bindPopup(popupContent);
-    
-    marker.addTo(map);
-    dataPointsMarkers.push(marker);
-  });
-}
-
-function flyToDataPoint(lat, lon) {
-  map.flyTo([lat, lon], 18, { duration: 1.5 });
-  log(`Đã di chuyển đến điểm dữ liệu tại (${lat.toFixed(5)}, ${lon.toFixed(5)})`, 'info');
-}
-
-function centerToUAV() {
-  if (vehicleMarker) {
-    const currentLatLng = vehicleMarker.getLatLng();
-    map.flyTo(currentLatLng, 18, {
-      animate: true,
-      duration: 1.0,
-      easeLinearity: 0.5
-    });
-    log('🎯 Đã căn giữa bản đồ vào vị trí UAV', 'ok');
-  } else {
-    log('⚠️ Chưa có dữ liệu vị trí UAV', 'warn');
-  }
-}
-
-function setMapType(type, btn) {
-  map.removeLayer(mapLayers[currentLayerName]);
-  mapLayers[type].addTo(map);
-  currentLayerName = type;
-  document.querySelectorAll('.map-type-btn').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
-}
-
-let gpsAngle = 0;
-let trueLat = 16.074353668716064;
-let trueLon = 108.15225143177362;
-
-async function updatePosition() {
-  try {
-    const d = await fetch('/vehicle-position').then(r => r.json());
-    if (!d.success) return;
-    
-    trueLat = d.lat;
-    trueLon = d.lon;
-    
-    gpsAngle += 0.1;
-    const radius = 0.0000045;
-    const noiseLat = Math.cos(gpsAngle) * radius;
-    const noiseLon = Math.sin(gpsAngle) * radius;
-    
-    const displayLat = trueLat + noiseLat;
-    const displayLon = trueLon + noiseLon;
-    
-    vehicleMarker.setLatLng([displayLat, displayLon]);
-    vehicleTrail.addLatLng([trueLat, trueLon]);
-    
-    if (vehicleTrail.getLatLngs().length > 100) {
-      const arr = vehicleTrail.getLatLngs();
-      arr.shift();
-      vehicleTrail.setLatLngs(arr);
-    }
-  } catch (_) { }
-}
-
-async function updateVehicleInfo() {
-  try {
-    const d = await fetch('/vehicle-info').then(r => r.json());
-    if (!d.success) return;
-    document.getElementById('spd-val').textContent = d.speed.toFixed(1) + ' m/s';
-    document.getElementById('hdg-val').textContent = Math.round(d.heading) + '°';
-    // document.getElementById('alt-val').textContent = d.alt.toFixed(1) + ' m';
-    document.getElementById('alt-val').textContent = 'N/A';
-    currentHeading = d.heading;
-    // Cập nhật icon drone với hướng mới
-    vehicleMarker.setIcon(getDroneIcon(currentHeading));
-  } catch (_) { }
-}
-
-async function updateMissionProgress() {
-  try {
-    const d = await fetch('/mission-progress').then(r => r.json());
-    if (!d.success) return;
-    const total = d.mission_total || 0;
-    const cur   = d.mission_current || 0;
-    document.getElementById('ms-text').textContent = total ? `WP ${cur} / ${total}` : '-- / --';
-    document.getElementById('ms-dot').className = 'ms-dot ' + (d.mission_state === 3 ? 'running' : d.mission_state === 5 ? 'done' : 'idle');
-
-    wpMarkers.forEach((m, i) => m.setIcon(getWpIcon(i + 1, (i === cur && d.mission_state === 3))));
-  } catch (_) { }
-}
-
-function addWaypoint(lat, lng) {
-  const idx = waypoints.length;
-  waypoints.push({ lat, lng, hold_time: 3, alt: 30 });
-  
-  const marker = L.marker([lat, lng], { icon: getWpIcon(idx + 1, false) }).addTo(map);
-  wpMarkers.push(marker);
-
-  updatePathLine();
-  renderWpList();
-  log(`WP ${idx + 1} added`, 'ok');
-}
-
-function updatePathLine() {
-  if (pathLine) map.removeLayer(pathLine);
-  if (waypoints.length < 2) return;
-  const latlngs = waypoints.map(w => [w.lat, w.lng]);
-  pathLine = L.polyline(latlngs, { color: '#F59E0B', weight: 2, dashArray: '8, 6', opacity: 0.8 }).addTo(map);
-}
-
-function renderWpList() {
-  const wrap = document.getElementById('wp-list-wrap');
-  wrap.querySelectorAll('.wp-item').forEach(el => el.remove());
-  document.getElementById('wp-empty').style.display = waypoints.length ? 'none' : 'block';
-
-  waypoints.forEach((wp, i) => {
-    const el = document.createElement('div');
-    el.className = 'wp-item';
-    el.innerHTML = `
-      <span class="wp-num">${i + 1}</span>
-      <span class="wp-coords">${wp.lat.toFixed(5)}<br>${wp.lng.toFixed(5)}</span>
-      <input type="number" class="wp-alt" value="${wp.alt || 30}" style="width: 55px; background: var(--surface); border: 1px solid var(--border); border-radius: 4px; padding: 4px;" placeholder="Alt m" onchange="updateWaypointAlt(${i}, this.value)">
-      <button class="wp-remove" onclick="removeWaypoint(${i})" title="Xóa">×</button>
-    `;
-    wrap.appendChild(el);
-  });
-}
-
-function updateWaypointAlt(idx, value) {
-  waypoints[idx].alt = parseFloat(value) || 30;
-  log(`WP${idx + 1} độ cao: ${waypoints[idx].alt}m`, 'info');
-}
-
 function removeWaypoint(idx) {
-  waypoints.splice(idx, 1);
+  if (idx < 0 || idx >= waypoints.length) return;
   map.removeLayer(wpMarkers[idx]);
+  waypoints.splice(idx, 1);
   wpMarkers.splice(idx, 1);
-  wpMarkers.forEach((m, i) => m.setIcon(getWpIcon(i + 1, false)));
-  updatePathLine();
-  renderWpList();
+
+  // Cập nhật lại số thứ tự icon
+  wpMarkers.forEach((m, i) => m.setIcon(getWpIcon(i, false)));
+  updateRouteLine();
+  renderWaypointList();
 }
 
-async function uploadMission() {
-  if (!waypoints.length) {
-    log('❌ Không có waypoint để upload', 'err');
+function clearAllWaypoints() {
+  wpMarkers.forEach(m => map.removeLayer(m));
+  waypoints.length = 0;
+  wpMarkers.length = 0;
+  updateRouteLine();
+  renderWaypointList();
+  fetch('/clear-mission', { method: 'POST' }).catch(() => {});
+}
+
+async function uploadMissionToServer() {
+  if (waypoints.length === 0) {
+    alert("Vui lòng nhấp chuột trên bản đồ để thêm ít nhất 1 điểm đo!");
     return;
   }
-  
-  const bar = document.getElementById('upload-bar');
-  bar.style.width = '0%';
-  bar.className = 'progress-bar';
-  
-  log(`📤 Đang upload ${waypoints.length} waypoints lên UAV...`, 'info');
-  
-  let prog = 0;
-  const interval = setInterval(() => {
-    prog = Math.min(prog + 4, 85);
-    bar.style.width = prog + '%';
-  }, 80);
-  
+
+  // Reset toàn bộ dữ liệu đo của các waypoint mới để tuyệt đối không gán dữ liệu lịch sử cũ
+  waypoints.forEach(w => {
+    w.measuredData = null;
+  });
+  renderWaypointList();
+
+  // QUY TẮC: GỬI WAYPOINT CHỈ GỬI VỊ TRÍ TỌA ĐỘ (lat, lng), KHÔNG GỬI ĐỘ CAO (alt) SANG
+  const missionPayload = waypoints.map(w => ({
+    lat: Number(w.lat.toFixed(7)),
+    lng: Number(w.lng.toFixed(7))
+  }));
+
   try {
-    const response = await fetch('/upload-mission', {
+    const res = await fetch('/upload-mission', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mission: waypoints })
+      body: JSON.stringify({ mission: missionPayload })
     });
-    const data = await response.json();
-    
-    clearInterval(interval);
-    
-    if (data.success) {
-      bar.style.width = '100%';
-      bar.className = 'progress-bar success';
-      log(`✅ ${data.message || 'Upload thành công!'}`, 'ok');
-      setTimeout(() => { bar.style.width = '0%'; }, 2000);
+    const d = await res.json();
+    if (d.success) {
+      alert(`Đã nạp thành công ${waypoints.length} điểm đo vào hệ thống tự hành! Bấm 'Bắt đầu bay' để cất cánh hoặc tiếp tục hành trình.`);
     } else {
-      bar.className = 'progress-bar fail';
-      log(`❌ Upload thất bại: ${data.message || 'Lỗi không xác định'}`, 'err');
+      alert("Lỗi: " + d.message);
     }
-  } catch (error) {
-    clearInterval(interval);
-    bar.className = 'progress-bar fail';
-    log(`❌ Lỗi kết nối: ${error.message}`, 'err');
-    console.error('Upload error:', error);
+  } catch (e) {
+    alert("Lỗi khi gửi lộ trình lên máy chủ: " + e.message);
   }
 }
+
+// ==================== ĐỒ THỊ ĐỘ CAO THEO THỜI GIAN (ALTITUDE REALTIME CHART) ====================
+let altitudeHistory = [];
+let altitudeStartTime = null;
+
+function recordAltitudePoint(actualAlt, targetAlt = 35.0, terrainAlt = 7.0) {
+  if (!altitudeStartTime) {
+    altitudeStartTime = Date.now();
+  }
+  const elapsedSec = (Date.now() - altitudeStartTime) / 1000;
+  altitudeHistory.push({
+    time: Number(elapsedSec.toFixed(1)),
+    actual: Number(actualAlt),
+    target: Number(targetAlt),
+    terrain: Number(terrainAlt)
+  });
+
+  // Lưu trữ tối đa 150 điểm gần nhất
+  if (altitudeHistory.length > 150) {
+    altitudeHistory.shift();
+  }
+
+  // Cập nhật số điểm (e.g. 40 pts)
+  const ptsEl = document.getElementById('alt-pts-counter');
+  if (ptsEl) {
+    ptsEl.textContent = `${altitudeHistory.length} pts`;
+  }
+
+  renderAltitudeChart();
+}
+
+function renderAltitudeChart() {
+  const canvas = document.getElementById('altitude-canvas');
+  if (!canvas) return;
+
+  const rect = canvas.parentElement.getBoundingClientRect();
+  if (rect.width === 0) return;
+
+  const dpr = window.devicePixelRatio || 1;
+  const w = rect.width;
+  const h = 120;
+
+  if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
+    canvas.width = Math.round(w * dpr);
+    canvas.height = Math.round(h * dpr);
+  }
+
+  const ctx = canvas.getContext('2d');
+  ctx.save();
+  ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, w, h);
+
+  // Khoảng đệm khung vẽ
+  const padLeft = 36;
+  const padRight = 14;
+  const padTop = 10;
+  const padBottom = 20;
+
+  const plotW = Math.max(10, w - padLeft - padRight);
+  const plotH = Math.max(10, h - padTop - padBottom);
+
+  // Thang đo trục Y cố định theo ảnh mẫu: 0m -> 35m (mỗi vạch 7m)
+  const minY = 0.0;
+  const maxY = 35.0;
+
+  function toY(altVal) {
+    const clamped = Math.max(minY, Math.min(maxY, altVal));
+    return padTop + plotH - ((clamped - minY) / (maxY - minY)) * plotH;
+  }
+
+  // 1. Vẽ các đường chia ngang & nhãn Y: 0m, 7m, 14m, 21m, 28m, 35m
+  const yTicks = [0, 7, 14, 21, 28, 35];
+  ctx.font = "9px 'JetBrains Mono', monospace";
+  ctx.textAlign = "right";
+  ctx.textBaseline = "middle";
+
+  yTicks.forEach(yVal => {
+    const yPx = toY(yVal);
+
+    // Lưới chấm ngang
+    ctx.beginPath();
+    ctx.setLineDash([2, 3]);
+    ctx.strokeStyle = "#e2e8f0";
+    ctx.lineWidth = 1;
+    ctx.moveTo(padLeft, yPx);
+    ctx.lineTo(padLeft + plotW, yPx);
+    ctx.stroke();
+
+    // Nhãn trục Y
+    ctx.fillStyle = "#94a3b8";
+    ctx.fillText(`${yVal}m`, padLeft - 6, yPx);
+  });
+
+  // 2. Phạm vi thời gian trục X
+  const n = altitudeHistory.length;
+  let minT = 0;
+  let maxT = 4.0; // Tối thiểu hiển thị cửa sổ 4.0s như ảnh
+
+  if (n > 0) {
+    const lastT = altitudeHistory[n - 1].time;
+    if (lastT > 4.0) {
+      maxT = Math.ceil(lastT * 10) / 10;
+      minT = Math.max(0, Math.round((maxT - 15) * 10) / 10);
+    }
+  }
+
+  function toX(tVal) {
+    return padLeft + ((tVal - minT) / Math.max(0.1, maxT - minT)) * plotW;
+  }
+
+  // Vẽ các vạch chia dọc & nhãn thời gian X: 0.1s - 0.5s - 1s...
+  const rangeT = maxT - minT;
+  const stepT = rangeT <= 5 ? 0.5 : (rangeT <= 15 ? 1 : 2);
+  ctx.textAlign = "center";
+  ctx.textBaseline = "top";
+
+  for (let t = Math.ceil(minT / stepT) * stepT; t <= maxT + 0.01; t += stepT) {
+    const tRounded = Number(t.toFixed(1));
+    const xPx = toX(tRounded);
+    if (xPx >= padLeft && xPx <= padLeft + plotW) {
+      // Vạch chấm dọc
+      ctx.beginPath();
+      ctx.setLineDash([2, 3]);
+      ctx.strokeStyle = "#f1f5f9";
+      ctx.moveTo(xPx, padTop);
+      ctx.lineTo(xPx, padTop + plotH);
+      ctx.stroke();
+
+      // Nhãn thời gian trục X
+      ctx.fillStyle = "#94a3b8";
+      ctx.fillText(`${tRounded}s`, xPx, padTop + plotH + 5);
+    }
+  }
+
+  // 3. Đường TERRAIN (Mặt đất / Địa hình - nét liền màu hổ phách #d97706)
+  const terrainAlt = 7.0; // 7m theo ảnh mẫu
+  const terrainY = toY(terrainAlt);
+  ctx.beginPath();
+  ctx.setLineDash([]);
+  ctx.strokeStyle = "#d97706";
+  ctx.lineWidth = 1.8;
+  ctx.moveTo(padLeft, terrainY);
+  ctx.lineTo(padLeft + plotW, terrainY);
+  ctx.stroke();
+
+  // 4. Đường TARGET (Độ cao mục tiêu - nét đứt màu xanh dương #0284c7)
+  const targetAlt = 35.0; // 35m theo ảnh mẫu
+  const targetY = toY(targetAlt);
+  ctx.beginPath();
+  ctx.setLineDash([5, 4]);
+  ctx.strokeStyle = "#0284c7";
+  ctx.lineWidth = 1.8;
+  ctx.moveTo(padLeft, targetY);
+  ctx.lineTo(padLeft + plotW, targetY);
+  ctx.stroke();
+
+  // 5. Đường ACTUAL (Độ cao thực tế UAV - nét liền màu xanh lá #157a3a)
+  if (n > 0) {
+    ctx.beginPath();
+    ctx.setLineDash([]);
+    ctx.strokeStyle = "#157a3a";
+    ctx.lineWidth = 2.0;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+
+    let started = false;
+    for (let i = 0; i < n; i++) {
+      const pt = altitudeHistory[i];
+      if (pt.time >= minT - 0.2) {
+        const x = toX(pt.time);
+        const y = toY(pt.actual);
+        if (!started) {
+          ctx.moveTo(x, y);
+          started = true;
+        } else {
+          ctx.lineTo(x, y);
+        }
+      }
+    }
+    ctx.stroke();
+  }
+
+  ctx.restore();
+}
+
+function toggleAltitudeChart() {
+  const panel = document.getElementById('altitude-chart-panel');
+  const icon = document.getElementById('alt-toggle-icon');
+  const txt = document.getElementById('alt-toggle-text');
+  if (!panel) return;
+
+  const isCollapsed = panel.classList.toggle('collapsed');
+  if (icon && txt) {
+    icon.textContent = isCollapsed ? '^' : 'v';
+    txt.textContent = isCollapsed ? 'SHOW' : 'HIDE';
+  }
+
+  // Trigger leaflet redraw khi co giãn
+  setTimeout(() => {
+    if (map) map.invalidateSize();
+    if (!isCollapsed) renderAltitudeChart();
+  }, 260);
+}
+
+// Bắt sự kiện chuyển tab trong đồ thị độ cao (ALT, PROFILE, ERR, V/S)
+document.addEventListener('DOMContentLoaded', () => {
+  const tabBtns = document.querySelectorAll('.alt-tab-btn');
+  tabBtns.forEach(btn => {
+    btn.addEventListener('click', function() {
+      tabBtns.forEach(b => b.classList.remove('active'));
+      this.classList.add('active');
+    });
+  });
+});
 
 async function startMission() {
-  if (!waypoints.length) {
-    log('❌ Chưa có waypoint nào được upload! Hãy upload waypoint trước.', 'err');
-    return;
-  }
-  
-  log('🚀 Đang gửi lệnh bắt đầu mission...', 'info');
-  
   try {
-    const response = await fetch('/start-mission', { method: 'POST' });
-    const data = await response.json();
-    
-    if (data.success) {
-      log(`✅ ${data.message || 'Mission đã bắt đầu! UAV đang di chuyển đến waypoint đầu tiên.'}`, 'ok');
-    } else {
-      log(`❌ ${data.message || 'Không thể bắt đầu mission'}`, 'err');
-    }
-  } catch (error) {
-    log(`❌ Lỗi: ${error.message}`, 'err');
-    console.error('Start mission error:', error);
+    const res = await fetch('/start-mission', { method: 'POST' });
+    const d = await res.json();
+    if (!d.success) alert(d.message);
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+async function triggerTakeoff() {
+  try {
+    const res = await fetch('/takeoff', { method: 'POST' });
+    const d = await res.json();
+    if (!d.success && d.message) alert(d.message);
+  } catch (e) {
+    console.error(e);
   }
 }
 
 async function stopMission() {
-  log('⏸️ Đang dừng mission...', 'info');
-  
   try {
-    const response = await fetch('/stop-mission', { method: 'POST' });
-    const data = await response.json();
-    
-    if (data.success) {
-      log(`✅ ${data.message || 'Mission đã dừng'}`);
-    } else {
-      log(`❌ ${data.message || 'Không thể dừng mission'}`, 'err');
-    }
-  } catch (error) {
-    log(`❌ Lỗi: ${error.message}`, 'err');
+    await fetch('/stop-mission', { method: 'POST' });
+  } catch (e) {
+    console.error(e);
   }
 }
 
-function clearWaypoints() {
-  waypoints.length = 0;
-  wpMarkers.forEach(m => map.removeLayer(m));
-  wpMarkers.length = 0;
-  if (pathLine) { map.removeLayer(pathLine); pathLine = null; }
-  renderWpList();
-  log('Đã xóa toàn bộ Waypoints', 'warn');
-}
-
-async function uploadMission() {
-  if (!waypoints.length) return log('Không có WP để upload', 'warn');
-  const bar = document.getElementById('upload-bar');
-  bar.style.width = '0%'; bar.className = 'progress-bar';
-  let prog = 0; const interval = setInterval(() => { prog = Math.min(prog + 4, 85); bar.style.width = prog + '%'; }, 80);
+async function armUAV() {
   try {
-    const r = await fetch('/upload-mission', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mission: waypoints }) });
-    const d = await r.json();
-    clearInterval(interval); bar.style.width = '100%'; bar.className = 'progress-bar ' + (d.success ? 'success' : 'fail');
-    log(d.message || (d.success ? 'Upload OK' : 'Failed'), d.success ? 'ok' : 'err');
-    setTimeout(() => { bar.style.width = '0%'; }, 2000);
-  } catch (e) { clearInterval(interval); bar.className = 'progress-bar fail'; log('Error', 'err'); }
+    await fetch('/arm', { method: 'POST' });
+  } catch (e) {
+    console.error(e);
+  }
 }
 
-async function startMission() { 
-  const r = await fetch('/start-mission', { method: 'POST' });
-  const d = await r.json();
-  log(d.message || 'Start Mission Request Sent', 'ok');
-}
-
-async function stopMission() {
-  const r = await fetch('/stop-mission', { method: 'POST' });
-  const d = await r.json();
-  log(d.message || 'Mission Stopped', 'warn');
-}
-
-async function loadMissionFromVehicle() { }
-
-async function armVehicle() { 
-  const r = await fetch('/arm', { method: 'POST' });
-  log('Arming...', 'info');
-}
-
-async function disarmVehicle() { 
-  const r = await fetch('/disarm', { method: 'POST' });
-  log('Disarming...', 'info');
-}
-
-async function rtl() { 
-  const r = await fetch('/rtl', { method: 'POST' });
-  log('Return To Launch...', 'info');
-}
-
-async function exportDataCSV() {
-  window.open('/export-csv', '_blank');
-  log('Đang xuất file CSV...', 'info');
-}
-
-async function exportDataJSON() {
+async function disarmUAV() {
   try {
-    const r = await fetch('/export-json');
-    const d = await r.json();
+    await fetch('/disarm', { method: 'POST' });
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+async function triggerRTL() {
+  try {
+    await fetch('/rtl', { method: 'POST' });
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+async function loadCurrentMission() {
+  try {
+    const res = await fetch('/get-mission');
+    const d = await res.json();
+    if (d.success && d.mission && d.mission.length > 0) {
+      clearAllWaypoints();
+      d.mission.forEach(w => addWaypoint(w.lat, w.lng || w.lon));
+    }
+  } catch (_) {}
+}
+
+// ==================== DỮ LIỆU ĐÃ THU THẬP & CSV ====================
+async function loadCollectedData() {
+  try {
+    const res = await fetch('/get-collected-data');
+    const d = await res.json();
+    if (!d.success || !d.data) return;
+
+    // Chỉ gán dữ liệu vào waypoint nếu tọa độ đo thực tế trùng khớp với waypoint hiện tại
+    matchCollectedDataToWaypoints(d.data);
+
+    renderCollectedDataTable(d.data);
+    renderDataPointsOnMap(d.data);
+    renderWaypointList();
+  } catch (_) {}
+}
+
+async function clearCollectedHistory() {
+  if (!confirm('Bạn có chắc chắn muốn xóa toàn bộ lịch sử các điểm đã đo?')) return;
+  try {
+    const res = await fetch('/wp-data/clear', { method: 'POST' });
+    const d = await res.json();
     if (d.success) {
-      const dataStr = JSON.stringify(d.data, null, 2);
-      const blob = new Blob([dataStr], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `uav_data_${new Date().toISOString().slice(0,19)}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
-      log('Xuất JSON thành công', 'ok');
+      waypoints.forEach(w => { w.measuredData = null; });
+      dataPointMarkers.forEach(m => map.removeLayer(m));
+      dataPointMarkers = [];
+      renderCollectedDataTable([]);
+      renderWaypointList();
     }
   } catch (err) {
-    log('Lỗi xuất JSON', 'err');
+    console.error('Lỗi khi xóa lịch sử:', err);
   }
 }
 
-// Hàm toàn cục cho onclick
-window.flyToDataPoint = flyToDataPoint;
-window.updateWaypointAlt = updateWaypointAlt;
-window.removeWaypoint = removeWaypoint;
-window.clearWaypoints = clearWaypoints;
-window.uploadMission = uploadMission;
-window.startMission = startMission;
-window.stopMission = stopMission;
-window.armVehicle = armVehicle;
-window.disarmVehicle = disarmVehicle;
-window.rtl = rtl;
-window.setMapType = setMapType;
-window.centerToUAV = centerToUAV;
-window.exportDataCSV = exportDataCSV;
-window.exportDataJSON = exportDataJSON;
+async function deleteSingleCollectedPoint(filename, wpIdx) {
+  if (!confirm(`Bạn có chắc chắn muốn xóa dữ liệu đo của điểm #${wpIdx + 1}?`)) return;
+  try {
+    const res = await fetch('/wp-data/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename: filename, waypoint_index: wpIdx })
+    });
+    const d = await res.json();
+    if (d.success) {
+      waypoints.forEach(w => {
+        if (w.measuredData && (w.measuredData.filename === filename || w.measuredData.waypoint_index === wpIdx)) {
+          w.measuredData = null;
+        }
+      });
+      loadCollectedData();
+    }
+  } catch (err) {
+    console.error('Lỗi khi xóa điểm đo:', err);
+  }
+}
+
+function renderCollectedDataTable(dataList) {
+  const container = document.getElementById('collected-data-table-body');
+  if (!container) return;
+
+  if (dataList.length === 0) {
+    container.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--text-3);padding:10px;font-size:10px;">Chưa có dữ liệu đo đạc tại các điểm.</td></tr>`;
+    return;
+  }
+
+  container.innerHTML = dataList.slice().reverse().map((r, i) => {
+    const wpIdx = r.waypoint_index !== undefined ? r.waypoint_index : 0;
+    const aqi = r.aqi || 1;
+    let badgeBg = '#dcfce7';
+    let badgeColor = '#15803d';
+    if (aqi > 200) { badgeBg = '#fce7f3'; badgeColor = '#7e0023'; }
+    else if (aqi > 150) { badgeBg = '#fee2e2'; badgeColor = '#b91c1c'; }
+    else if (aqi > 100) { badgeBg = '#fee2e2'; badgeColor = '#b91c1c'; }
+    else if (aqi > 50) { badgeBg = '#fef3c7'; badgeColor = '#b45309'; }
+
+    // Rút gọn giờ sang HH:mm để tiết kiệm diện tích (ví dụ 11:28)
+    const timeFormatted = r.time ? new Date(r.time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : '--:--';
+
+    return `
+      <tr style="border-bottom:1px solid var(--line);">
+        <td style="font-family:var(--mono);font-weight:700;padding:5px 2px;text-align:center;">#${wpIdx + 1}</td>
+        <td class="tabular-num" style="padding:5px 2px;color:var(--text-2);font-size:9.5px;white-space:nowrap;">${timeFormatted}</td>
+        <td class="tabular-num" style="padding:5px 2px;color:var(--danger);font-weight:700;white-space:nowrap;">${(r.pm25 || 0).toFixed(1)}</td>
+        <td class="tabular-num" style="padding:5px 2px;white-space:nowrap;">${Math.round(r.eco2 || 0)}</td>
+        <td style="padding:5px 2px;text-align:center;white-space:nowrap;">
+          <span style="display:inline-block;white-space:nowrap;background:${badgeBg};color:${badgeColor};font-size:9px;padding:1px 3px;font-weight:800;border-radius:3px;border:1px solid ${badgeColor}30;letter-spacing:-0.2px;">
+            AQI ${aqi}
+          </span>
+        </td>
+        <td style="padding:5px 2px;text-align:center;white-space:nowrap;">
+          <div style="display:inline-flex;align-items:center;justify-content:center;gap:3px;">
+            <button class="btn-cockpit btn-outline" style="height:19px;padding:0 4px;font-size:8.5px;" onclick="panToPoint(${r.lat}, ${r.lon}, ${wpIdx})" title="Xem vị trí điểm đo">Xem</button>
+            ${r.filename ? `<a href="/wp-data/download/${r.filename}" class="btn-cockpit btn-primary" style="height:19px;padding:1px 4px;font-size:8.5px;text-decoration:none;" title="Tải CSV điểm #${wpIdx + 1}">CSV</a>` : ''}
+            <button onclick="deleteSingleCollectedPoint('${r.filename || ''}', ${wpIdx})" style="width:17px;height:17px;line-height:17px;font-size:13px;font-weight:700;color:var(--danger);background:transparent;border:none;cursor:pointer;padding:0;display:inline-flex;align-items:center;justify-content:center;border-radius:3px;" title="Xóa điểm đo này">×</button>
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function renderDataPointsOnMap(dataList) {
+  // Xóa markers cũ
+  dataPointMarkers.forEach(m => map.removeLayer(m));
+  dataPointMarkers = [];
+
+  dataList.forEach(pt => {
+    const aqi = pt.aqi || 1;
+    const color = aqi <= 50 ? '#157a3a' : (aqi <= 100 ? '#b25e00' : '#b42318');
+    const wpIdx = pt.waypoint_index !== undefined ? pt.waypoint_index : 0;
+
+    const icon = L.divIcon({
+      className: 'data-point-node',
+      html: `<div style="width:12px;height:12px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.3);cursor:pointer;" title="Điểm đo #${wpIdx + 1} - Bấm xem chi tiết"></div>`,
+      iconSize: [12, 12],
+      iconAnchor: [6, 6]
+    });
+
+    const m = L.marker([pt.lat, pt.lon], { icon: icon }).addTo(map);
+    m.on('click', (e) => {
+      L.DomEvent.stopPropagation(e);
+      if (wpMarkers[wpIdx]) {
+        showWaypointAirQualityPopup(wpIdx, wpMarkers[wpIdx]);
+      }
+    });
+
+    dataPointMarkers.push(m);
+  });
+}
+
+function panToPoint(lat, lon, wpIdx) {
+  if (map && lat && lon) {
+    map.setView([lat, lon], 17, { animate: true });
+    if (wpIdx !== undefined && wpMarkers[wpIdx]) {
+      showWaypointAirQualityPopup(wpIdx, wpMarkers[wpIdx]);
+    }
+  }
+}
+
+// Khởi chạy khi DOM sẵn sàng
+document.addEventListener('DOMContentLoaded', () => {
+  initMap();
+  loadCollectedData();
+  setInterval(loadCollectedData, 5000);
+});

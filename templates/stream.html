@@ -5,51 +5,29 @@
 {% block main_content %}
 <div class="stream-layout">
   <div class="video-container card" style="padding:0; overflow:hidden;">
-    <div class="video-header" style="padding: 12px 16px; background: #1a1a1a; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid #333;">
-      <span class="ms-dot running pulse" id="recording-dot" style="display: none;"></span>
-      <span class="video-title" style="color: #fff; font-weight: 600; font-size: 0.9rem;">LIVE FEED - UAV_SENSOR_01</span>
+    <div class="video-header" style="padding: 10px 16px; background: #141b27; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--line);">
+      <span class="pill-dot" style="background: #ef4444; width: 8px; height: 8px; border-radius: 50%;"></span>
+      <span class="video-title" style="color: #fff; font-weight: 700; font-size: 0.9rem; letter-spacing: 0.04em;">
+        LUỒNG CAMERA UAV · <span style="color: #f59e0b;">CHƯA KẾT NỐI (NO SIGNAL)</span>
+      </span>
+      <span style="margin-left: auto; font-family: var(--mono); font-size: 11px; color: #94a3b8;">RTSP / UVC: OFFLINE</span>
     </div>
     
-    <div class="video-wrapper" style="overflow: hidden; position: relative; background: #000;">
-      <img id="uav-stream" src="/video_feed" alt="UAV Stream" onerror="this.style.display='none'; useWebcam();" style="display: block; width: 100%; height: auto;">
-      <video id="webcam-mock" autoplay playsinline muted style="display:none; width: 100%; height: auto;"></video>
-      
-      <div id="camera-placeholder" class="placeholder-overlay">
-        <div class="spinner" style="width: 40px; height: 40px; border: 4px solid #333; border-top-color: var(--accent); border-radius: 50%; animation: spin 1s linear infinite;"></div>
-        <p>Đang kết nối tín hiệu...</p>
-      </div>
-      
-      <!-- Zoom instructions overlay -->
-      <div class="zoom-instructions" style="position: absolute; bottom: 10px; left: 10px; background: rgba(0,0,0,0.6); padding: 5px 10px; border-radius: 6px; font-size: 0.65rem; color: #ccc; pointer-events: none;">
-        💡 Ctrl+Scroll = Zoom | Right-click+Drag = Pan | Double-click = Reset
-      </div>
-    </div>
+    <div class="video-wrapper" style="overflow: hidden; position: relative; background: #0c1017; min-height: 480px; display: flex; align-items: center; justify-content: center;">
+      <!-- Stream Image (Mock NO SIGNAL test card from server) -->
+      <img id="uav-stream" src="/video_feed" alt="Camera Feed" style="display: block; width: 100%; height: auto; opacity: 0.45; filter: grayscale(40%);">
 
-    <div class="video-controls" style="padding: 12px 16px; background: #1a1a1a; display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
-      <button class="btn btn-ghost btn-sm" id="snapshot-btn" onclick="takeSnapshot()" style="color: #ccc; border-color: #444;">
-        📸 Snapshot
-      </button>
-      <button class="btn btn-ghost btn-sm" id="record-btn" onclick="toggleRecording()" style="color: #ccc; border-color: #444;">
-        ● Record
-      </button>
-      <div style="display: flex; gap: 4px; margin-left: auto;">
-        <button class="btn btn-ghost btn-sm" id="zoom-in-btn" title="Zoom In (Ctrl+Scroll)" style="color: #ccc;">🔍+</button>
-        <button class="btn btn-ghost btn-sm" id="zoom-out-btn" title="Zoom Out (Ctrl+Scroll)" style="color: #ccc;">🔍-</button>
-        <button class="btn btn-ghost btn-sm" id="zoom-reset-btn" title="Reset Zoom (Double-click)" style="color: #ccc;">⟲</button>
-      </div>
-      <button class="btn btn-ghost btn-sm" id="cam-toggle-btn" onclick="toggleCamera()" style="margin-left: auto;">
-        Dừng Camera
-      </button>
-    </div>
-    
-    <!-- Snapshot preview -->
-    <div id="snapshot-preview" style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1000; background: #000; border-radius: 12px; max-width: 90%; max-height: 90%; box-shadow: 0 20px 40px rgba(0,0,0,0.5);">
-      <img id="snapshot-img" style="max-width: 100%; max-height: 80vh; border-radius: 12px;">
-      <div style="position: absolute; top: 10px; right: 10px;">
-        <button onclick="closeSnapshot()" style="background: rgba(0,0,0,0.7); color: white; border: none; border-radius: 50%; width: 30px; height: 30px; cursor: pointer;">×</button>
-      </div>
-      <div style="padding: 12px; text-align: center;">
-        <a id="snapshot-download" download style="color: var(--accent); text-decoration: none;">Tải xuống</a>
+      <!-- Prominent Disconnected Cockpit Card Overlay -->
+      <div class="camera-disconnected-card" style="position: absolute; text-align: center; background: rgba(15, 20, 29, 0.92); border: 1px solid #334155; border-radius: 8px; padding: 24px 30px; box-shadow: 0 10px 30px rgba(0,0,0,0.6); max-width: 440px;">
+        <div style="font-size: 38px; line-height: 1; margin-bottom: 10px;">⚠️</div>
+        <div style="font-family: var(--font-display); font-size: 16px; font-weight: 800; letter-spacing: 0.05em; color: #ffffff;">CAMERA CHƯA KẾT NỐI</div>
+        <div style="color: #94a3b8; font-size: 12px; margin: 8px 0 16px; line-height: 1.5;">
+          Phần cứng Camera chưa được gắn hoặc chưa khởi tạo giao thức truyền hình (RTSP/UVC).
+        </div>
+        <div style="display: inline-flex; align-items: center; gap: 8px; padding: 5px 12px; background: rgba(234, 179, 8, 0.12); border: 1px solid rgba(234, 179, 8, 0.4); border-radius: 4px; color: #eab308; font-family: var(--mono); font-size: 11px; font-weight: 700;">
+          <span style="display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #eab308;"></span>
+          TRẠNG THÁI: NO SIGNAL (DISCONNECTED)
+        </div>
       </div>
     </div>
   </div>
@@ -336,8 +314,9 @@ function formatStreamNumber(value, decimals = 1) {
     document.getElementById('ov-hdg').textContent = formatStreamNumber(g.heading, 0) + '°';
 
     const battery = Number(s.battery);
+    const voltage = s.voltage !== undefined ? Number(s.voltage) : (14.2 + (battery / 100) * 2.6);
     document.getElementById('ov-bat').textContent =
-      Number.isFinite(battery) ? battery.toFixed(1) + ' V' : 'N/A';
+      Number.isFinite(battery) ? `${Math.round(battery)}% (${voltage.toFixed(1)}V)` : 'N/A';
 
     document.getElementById('ov-pm25').textContent = formatStreamNumber(sen.pm25, 1) + ' µg/m³';
     document.getElementById('ov-eco2').textContent = formatStreamNumber(sen.eco2, 1) + ' mg/m³';

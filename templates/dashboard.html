@@ -1,10 +1,26 @@
 {% extends "base.html" %}
-{% block title %}Telemetry — UAV GCS{% endblock %}
-{% block topbar_title %}<h1 class="page-title">Telemetry & Flight Data</h1>{% endblock %}
+{% block title %}Dữ liệu đo đạc — UAV GCS{% endblock %}
+{% block topbar_title %}<h1 class="page-title">Dữ liệu đo đạc & Quan trắc</h1>{% endblock %}
 
 {% block head_extra %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
+  :root {
+    --border: var(--line, #d3d8e0);
+    --txt: var(--text, #14181f);
+    --txt2: var(--text-2, #4d5766);
+    --txt3: var(--text-3, #7d8795);
+    --accent: var(--primary, #1a4d8f);
+    --surface2: var(--surface-2, #f6f7f9);
+  }
+  .btn-outline {
+    background: var(--surface);
+    color: var(--primary);
+    border: 1px solid var(--primary);
+  }
+  .btn-outline:hover {
+    background: var(--surface-hover);
+  }
   .sensors-grid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
@@ -317,8 +333,9 @@
         <div class="metric-data">
             <span class="card-label">Pin (Battery)</span>
             <div class="card-value">
-                <span id="t-bat" class="stat-value" style="color: var(--warn);">--</span>
-                <span class="card-unit">V</span>
+                <span id="t-bat" class="stat-value" style="color: var(--ok);">--</span>
+                <span class="card-unit">%</span>
+                <span id="t-volt" style="font-size: 0.85rem; color: var(--txt3); margin-left: 6px;">(--V)</span>
             </div>
         </div>
     </div>
@@ -466,6 +483,7 @@
       <div style="margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap;">
         <button class="btn btn-danger btn-sm" onclick="apiCall('/arm', 'POST', 'ARM')">ARM</button>
         <button class="btn btn-ghost btn-sm" onclick="apiCall('/disarm', 'POST', 'DISARM')">DISARM</button>
+        <button class="btn btn-primary btn-sm" onclick="apiCall('/takeoff', 'POST', 'CẤT CÁNH')">CẤT CÁNH</button>
         <button class="btn btn-warn btn-sm" onclick="apiCall('/rtl', 'POST', 'RTL')">RTL</button>
         <button class="btn btn-ghost btn-sm" onclick="setFlightMode('LOITER')">LOITER</button>
         <button class="btn btn-ghost btn-sm" onclick="setFlightMode('GUIDED')">GUIDED</button>
@@ -474,20 +492,29 @@
     </div>
   </div>
   <!-- WP Data Collection Panel -->
-  <div class="section-label">📦 Dữ liệu thu thập tại Waypoints</div>
+  <div class="section-label">📊 Lịch sử dữ liệu đo đạc tại các điểm (Waypoint History)</div>
   <div class="card" style="margin-bottom: 24px; padding: 0; overflow: hidden;">
     <!-- Header bar -->
-    <div style="padding: 14px 16px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--border);">
-      <span id="wp-panel-status" style="font-size: 0.8rem; color: var(--txt2);">Chưa có dữ liệu nào.</span>
-      <div style="margin-left: auto; display: flex; gap: 8px;">
+    <div style="padding: 14px 16px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--border); flex-wrap: wrap;">
+      <div>
+        <div style="font-weight: 700; font-size: 0.9rem; color: var(--txt);">Dữ liệu quan trắc theo các điểm đã thu thập</div>
+        <span id="wp-panel-status" style="font-size: 0.8rem; color: var(--txt3);">Chưa có dữ liệu nào. Bắt đầu mission trên Bản đồ bay để thu thập hoặc lưu điểm hiện tại.</span>
+      </div>
+      <div style="margin-left: auto; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
         <span id="wp-live-indicator" style="display:none;">
-          <span class="live-collecting"><span class="dot"></span>Đang thu thập...</span>
+          <span class="live-collecting"><span class="dot"></span>Đang thu thập mẫu...</span>
         </span>
-        <button class="btn btn-ghost btn-sm" id="btn-dl-all" onclick="downloadAllWP()" style="display:none;">
-          ⬇ Tải tất cả (.zip)
+        <button class="btn btn-outline btn-sm" onclick="saveCurrentPoint()" title="Lưu thông số quan trắc hiện tại của vị trí và cảm biến thành một điểm đo mới" style="display: inline-flex; align-items: center; gap: 5px;">
+          💾 Lưu điểm hiện tại
         </button>
-        <button class="btn btn-ghost btn-sm" onclick="clearWPData()" style="color: #EF4444; border-color: #EF4444; display:none;" id="btn-clear-wp">
-          🗑 Xóa
+        <a href="/download-csv" class="btn btn-primary btn-sm" id="btn-export-csv" style="text-decoration: none; display: inline-flex; align-items: center; gap: 6px;">
+          ⬇ Xuất file CSV tổng hợp
+        </a>
+        <button class="btn btn-ghost btn-sm" id="btn-dl-all" onclick="downloadAllWP()">
+          📦 Tải tất cả (.zip)
+        </button>
+        <button class="btn btn-ghost btn-sm" onclick="clearWPData()" style="color: #EF4444; border-color: #EF4444;" id="btn-clear-wp">
+          🗑 Xóa lịch sử
         </button>
       </div>
     </div>
@@ -495,7 +522,7 @@
     <!-- Live progress (khi đang HOLD) -->
     <div id="wp-live-progress" style="display:none; padding: 10px 16px; background: var(--surface2); border-bottom: 1px solid var(--border);">
       <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
-        <span style="font-size:0.78rem; color:var(--txt3);" id="wp-live-label">Thu thập WP ? — 0/30 mẫu</span>
+        <span style="font-size:0.78rem; color:var(--txt3);" id="wp-live-label">Thu thập WP ? — 0/10 mẫu</span>
         <span style="font-size:0.78rem; color:var(--accent);" id="wp-live-pct">0%</span>
       </div>
       <div style="height:6px; background:var(--border); border-radius:4px; overflow:hidden;">
@@ -505,20 +532,26 @@
 
     <!-- Table -->
     <div style="overflow-x: auto;">
-      <table class="wp-table">
+      <table class="wp-table" style="width: 100%; text-align: left; font-size: 0.82rem;">
         <thead>
           <tr>
-            <th>WP</th>
+            <th>Điểm</th>
             <th>Thời gian</th>
-            <th>Tọa độ</th>
-            <th>Alt</th>
-            <th>Mẫu</th>
-            <th>File</th>
-            <th></th>
+            <th>Tọa độ GPS</th>
+            <th>Độ cao</th>
+            <th>PM2.5</th>
+            <th>PM10</th>
+            <th>CO₂</th>
+            <th>TVOC</th>
+            <th>CO</th>
+            <th>NO₂</th>
+            <th>Nhiệt/Ẩm</th>
+            <th>VN_AQI</th>
+            <th>Tập tin</th>
           </tr>
         </thead>
         <tbody id="wp-table-body">
-          <tr><td colspan="7" class="wp-empty">Chưa có dữ liệu. Bắt đầu mission để thu thập.</td></tr>
+          <tr><td colspan="13" class="wp-empty">Chưa có dữ liệu. Bắt đầu mission trên Bản đồ bay để thu thập dữ liệu tự động.</td></tr>
         </tbody>
       </table>
     </div>
@@ -755,7 +788,17 @@ function onUAVDataUpdate(event) {
   const gps = state.gps;
   const sensors = state.sensors;
   
-  document.getElementById('t-bat').textContent = formatNumber(state.battery, 1);
+  const batPct = state.battery !== undefined ? state.battery : 0;
+  const batVolt = state.voltage !== undefined ? Number(state.voltage) : (14.2 + (batPct / 100) * 2.6);
+  const batEl = document.getElementById('t-bat');
+  if (batEl) {
+    batEl.textContent = formatNumber(batPct, 1);
+    batEl.style.color = batPct > 50 ? 'var(--ok)' : (batPct > 20 ? 'var(--warn)' : 'var(--danger)');
+  }
+  const voltEl = document.getElementById('t-volt');
+  if (voltEl) {
+    voltEl.textContent = `(${batVolt.toFixed(1)}V)`;
+  }
   document.getElementById('t-spd').textContent = formatNumber(gps.speed, 2);
   document.getElementById('t-hdg').textContent = formatNumber(gps.heading, 0);
   document.getElementById('t-mode').textContent = state.mode || '--';
@@ -823,49 +866,138 @@ let _wpPollInterval = null;
 function renderWPTable(files) {
   const tbody = document.getElementById('wp-table-body');
   if (!files || files.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="7" class="wp-empty">Chưa có dữ liệu. Bắt đầu mission để thu thập.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="13" class="wp-empty">Chưa có dữ liệu. Bắt đầu mission trên Bản đồ bay để thu thập dữ liệu tự động.</td></tr>';
     document.getElementById('wp-panel-status').textContent = 'Chưa có dữ liệu nào.';
     document.getElementById('btn-dl-all').style.display = 'none';
     document.getElementById('btn-clear-wp').style.display = 'none';
     return;
   }
 
-  document.getElementById('wp-panel-status').textContent = `${files.length} waypoint đã thu thập — ${files.reduce((a,f)=>a+f.samples,0)} mẫu tổng cộng`;
+  document.getElementById('wp-panel-status').textContent = `Đã lưu trữ ${files.length} điểm đo — ${files.reduce((a,f)=>a+(f.samples||10),0)} mẫu tổng cộng`;
   document.getElementById('btn-dl-all').style.display = '';
   document.getElementById('btn-clear-wp').style.display = '';
 
-  tbody.innerHTML = files.map(f => `
-    <tr>
-      <td><span class="wp-badge">${f.wp}</span></td>
-      <td style="font-size:0.75rem;color:var(--txt3);font-family:'Inter',sans-serif;">${f.time}</td>
-      <td style="font-size:0.75rem;">${f.lat.toFixed(5)}, ${f.lon.toFixed(5)}</td>
-      <td>${f.alt}m</td>
-      <td>
-        <div class="sample-bar">
-          <div class="sample-bar-track">
-            <div class="sample-bar-fill" style="width:${Math.min(100,(f.samples/30)*100)}%"></div>
-          </div>
-          <span style="font-size:0.75rem;color:var(--txt2);min-width:40px;">${f.samples}/30</span>
-        </div>
-      </td>
-      <td style="font-size:0.72rem;color:var(--txt3);font-family:'Inter',sans-serif;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${f.filename}</td>
-      <td>
-        <button class="btn btn-ghost btn-sm" onclick="downloadWP('${f.filename}')" style="padding:4px 10px;font-size:0.75rem;">
-          ⬇ CSV
-        </button>
-      </td>
-    </tr>
-  `).join('');
+  tbody.innerHTML = files.map(f => {
+    const aqi = f.aqi || 1;
+    let badgeBg = '#dcfce7';
+    let badgeColor = '#15803d';
+    let aqiCat = f.aqi_category || 'Tốt';
+    if (aqi > 200) { badgeBg = '#fce7f3'; badgeColor = '#7e0023'; }
+    else if (aqi > 150) { badgeBg = '#fee2e2'; badgeColor = '#b91c1c'; }
+    else if (aqi > 100) { badgeBg = '#ffedd5'; badgeColor = '#c2410c'; }
+    else if (aqi > 50) { badgeBg = '#fef3c7'; badgeColor = '#b45309'; }
+
+    return `
+      <tr>
+        <td><span class="wp-badge">#${f.wp || 1}</span></td>
+        <td style="font-size:0.75rem;color:var(--txt3);font-family:'Inter',sans-serif;white-space:nowrap;">${f.time || '--'}</td>
+        <td style="font-size:0.75rem;font-family:'Roboto Mono',monospace;">${(Number(f.lat) || 0).toFixed(5)}, ${(Number(f.lon !== undefined ? f.lon : f.lng) || 0).toFixed(5)}</td>
+        <td style="font-family:'Roboto Mono',monospace;">${(Number(f.alt) || 0).toFixed(1)}m</td>
+        <td style="color:#EF4444;font-weight:700;font-family:'Roboto Mono',monospace;">${(Number(f.pm25) || 0).toFixed(1)}</td>
+        <td style="font-family:'Roboto Mono',monospace;">${(Number(f.pm10 || (f.pm25*1.5)) || 0).toFixed(1)}</td>
+        <td style="color:#F59E0B;font-weight:700;font-family:'Roboto Mono',monospace;">${Math.round(Number(f.eco2) || 0)}</td>
+        <td style="font-family:'Roboto Mono',monospace;">${Math.round(Number(f.tvoc) || 0)}</td>
+        <td style="font-family:'Roboto Mono',monospace;">${(Number(f.co) || 0).toFixed(2)}</td>
+        <td style="font-family:'Roboto Mono',monospace;">${(Number(f.no2) || 0).toFixed(1)}</td>
+        <td style="font-size:0.75rem;font-family:'Roboto Mono',monospace;white-space:nowrap;">${(Number(f.temp) || 29).toFixed(1)}°C | ${(Number(f.hum) || 65).toFixed(1)}%</td>
+        <td>
+          <span style="display:inline-block;padding:2px 8px;border-radius:4px;background:${badgeBg};color:${badgeColor};font-size:0.72rem;font-weight:700;border:1px solid ${badgeColor}30;white-space:nowrap;">
+            AQI ${aqi} (${aqiCat})
+          </span>
+        </td>
+        <td style="white-space:nowrap;">
+          <button class="btn btn-ghost btn-sm" onclick="downloadWP('${f.filename}')" style="padding:4px 8px;font-size:0.75rem;display:inline-flex;align-items:center;gap:4px;" title="Tải file CSV riêng của điểm này">
+            ⬇ CSV
+          </button>
+          <button class="btn btn-ghost btn-sm" onclick="deleteSingleWP('${f.filename}', ${f.wp - 1})" style="padding:4px 6px;font-size:0.75rem;color:#EF4444;border-color:#EF444440;margin-left:4px;" title="Xóa điểm đo này">
+            🗑
+          </button>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+async function deleteSingleWP(filename, wpIdx) {
+  if (!confirm(`Bạn có chắc chắn muốn xóa dữ liệu điểm đo #${wpIdx + 1}?`)) return;
+  try {
+    const r = await fetch('/wp-data/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename: filename, waypoint_index: wpIdx })
+    });
+    const d = await r.json();
+    if (d.success) {
+      _wpFiles = _wpFiles.filter(f => f.filename !== filename && f.wp !== (wpIdx + 1));
+      renderWPTable(_wpFiles);
+      showNotification(`Đã xóa điểm đo #${wpIdx + 1}`, 'info');
+    }
+  } catch(e) {
+    showNotification('Lỗi khi xóa điểm', 'error');
+  }
+}
+
+async function saveCurrentPoint() {
+  try {
+    showNotification('Đang lưu thông số điểm hiện tại...', 'info');
+    const r = await fetch('/save-current-waypoint', { method: 'POST' });
+    const d = await r.json();
+    if (d && d.success) {
+      showNotification(d.message || 'Đã lưu điểm quan trắc!', 'success');
+      await pollWPData();
+    } else {
+      showNotification(`Lỗi: ${d.message || 'Không thể lưu điểm'}`, 'error');
+    }
+  } catch (err) {
+    console.error('Error saving current point:', err);
+    showNotification(`Lỗi kết nối: ${err.message}`, 'error');
+  }
 }
 
 async function pollWPData() {
   try {
     const r = await fetch('/wp-data/list');
     const d = await r.json();
-    if (!d.success) return;
-    if (JSON.stringify(d.files) !== JSON.stringify(_wpFiles)) {
-      _wpFiles = d.files;
-      renderWPTable(_wpFiles);
+    if (d && d.success && Array.isArray(d.files) && d.files.length > 0) {
+      if (JSON.stringify(d.files) !== JSON.stringify(_wpFiles)) {
+        _wpFiles = d.files;
+        renderWPTable(_wpFiles);
+      }
+    } else {
+      // Fallback kiểm tra /get-collected-data nếu danh sách files tạm thời rỗng
+      const r2 = await fetch('/get-collected-data');
+      const d2 = await r2.json();
+      if (d2 && d2.success && Array.isArray(d2.data) && d2.data.length > 0) {
+        const mapped = d2.data.map(item => ({
+          wp: (item.waypoint_index !== undefined ? item.waypoint_index + 1 : 1),
+          filename: item.filename || `wp${(item.waypoint_index || 0) + 1}.csv`,
+          samples: item.sample_count || 10,
+          lat: item.lat || 0,
+          lon: item.lon || 0,
+          alt: item.alt || 0,
+          time: item.time || '',
+          pm25: item.pm25 || 0,
+          pm10: item.pm10 || 0,
+          eco2: item.eco2 || 0,
+          tvoc: item.tvoc || 0,
+          co: item.co || 0,
+          no2: item.no2 || 0,
+          temp: item.temp || 0,
+          hum: item.hum || 0,
+          aqi: item.aqi || 1,
+          aqi_category: item.aqi_category || 'Tốt',
+          aqi_color: item.aqi_color || '#157a3a'
+        }));
+        if (JSON.stringify(mapped) !== JSON.stringify(_wpFiles)) {
+          _wpFiles = mapped;
+          renderWPTable(_wpFiles);
+        }
+      } else if (d && d.success && Array.isArray(d.files) && d.files.length === 0) {
+        if (_wpFiles.length > 0) {
+          _wpFiles = [];
+          renderWPTable([]);
+        }
+      }
     }
   } catch(_) {}
 }

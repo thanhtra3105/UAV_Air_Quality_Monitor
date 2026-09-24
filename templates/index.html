@@ -1,811 +1,329 @@
 {% extends "base.html" %}
-{% block title %}Mission Planner — UAV GCS{% endblock %}
+{% block title %}Giám sát Không khí UAV — Trạm điều khiển{% endblock %}
 
-{% block topbar_title %}<h1 class="page-title">Mission Planner</h1>{% endblock %}
+{% block topbar_title %}
+<span>HỆ THỐNG GIÁM SÁT CHẤT LƯỢNG KHÔNG KHÍ UAV</span>
+{% endblock %}
 
 {% block head_extra %}
+<!-- Leaflet CSS & JS -->
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<style>
-  .mission-panel {
-    width: 340px;
-  }
-  .card-modern {
-    background: var(--surface);
-    border-radius: 14px;
-    box-shadow: var(--shadow);
-    overflow: hidden;
-    flex-shrink: 0;
-  }
-  
-  .card-header {
-    padding: 10px 14px;
-    background: var(--surface2);
-    border-bottom: 1px solid var(--border);
-    font-weight: 600;
-    font-size: 0.8rem;
-    color: var(--txt);
-  }
-  
-  .card-body {
-    padding: 12px;
-  }
-  
-  /* Data logging row */
-  .data-logging-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
-  
-  /* Toggle switch */
-  .toggle-switch {
-    position: relative;
-    display: inline-block;
-    width: 44px;
-    height: 22px;
-    flex-shrink: 0;
-  }
-  .toggle-switch input {
-    opacity: 0;
-    width: 0;
-    height: 0;
-  }
-  .toggle-slider {
-    position: absolute;
-    cursor: pointer;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background-color: #ccc;
-    transition: 0.3s;
-    border-radius: 22px;
-  }
-  .toggle-slider:before {
-    position: absolute;
-    content: "";
-    height: 16px;
-    width: 16px;
-    left: 3px;
-    bottom: 3px;
-    background-color: white;
-    transition: 0.3s;
-    border-radius: 50%;
-  }
-  input:checked + .toggle-slider {
-    background-color: var(--ok);
-  }
-  input:checked + .toggle-slider:before {
-    transform: translateX(22px);
-  }
-  
-  /* Sensor grid - 3 cột */
-  .sensor-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 8px;
-  }
-  .sensor-item {
-    background: var(--surface2);
-    border-radius: 10px;
-    padding: 6px 4px;
-    text-align: center;
-  }
-  .sensor-item .label {
-    font-size: 0.6rem;
-    color: var(--txt3);
-    margin-bottom: 3px;
-  }
-  .sensor-item .value {
-    font-size: 0.9rem;
-    font-weight: 600;
-    font-family: monospace;
-  }
-  .sensor-item .unit {
-    font-size: 0.55rem;
-    color: var(--txt3);
-  }
-  
-  /* Hold progress */
-  .hold-progress {
-    background: var(--surface2);
-    border-radius: 10px;
-    padding: 8px 10px;
-    display: none;
-  }
-  .hold-progress.active {
-    display: block;
-  }
-  .hold-header {
-    display: flex;
-    justify-content: space-between;
-    font-size: 0.65rem;
-    margin-bottom: 5px;
-  }
-  .progress-bar-bg {
-    height: 4px;
-    background: var(--border);
-    border-radius: 2px;
-    overflow: hidden;
-  }
-  .progress-bar-fill {
-    height: 100%;
-    background: var(--accent);
-    width: 0%;
-    transition: width 0.3s;
-  }
-  
-  /* Stats row - 3 cột */
-  .stats-row {
-    display: flex;
-    gap: 10px;
-  }
-  .stat-box {
-    flex: 1;
-    text-align: center;
-    padding: 6px 0;
-    background: var(--surface2);
-    border-radius: 10px;
-  }
-  .stat-box .label {
-    font-size: 0.6rem;
-    color: var(--txt3);
-  }
-  .stat-box .value {
-    font-size: 1rem;
-    font-weight: 700;
-    font-family: monospace;
-    color: var(--accent);
-  }
-  
-  /* Button rows */
-  .btn-row {
-    display: flex;
-    gap: 8px;
-  }
-  .btn-row .btn {
-    flex: 1;
-    justify-content: center;
-    text-align: center;
-  }
-  
-  /* Map tools */
-  .map-tools-row {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-  }
-  .map-type-group {
-    display: flex;
-    gap: 5px;
-    flex: 1;
-  }
-  .map-type-group .btn {
-    flex: 1;
-    font-size: 0.7rem;
-    padding: 5px 8px;
-  }
-  
-  /* Waypoint list */
-  .wp-list {
-    max-height: 140px;
-    overflow-y: auto;
-    margin: 8px 0;
-  }
-  .wp-item {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 5px 8px;
-    background: var(--surface2);
-    border-radius: 8px;
-    margin-bottom: 5px;
-    font-size: 0.7rem;
-  }
-  .wp-num {
-    width: 20px;
-    height: 20px;
-    background: var(--accent);
-    color: white;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.6rem;
-    font-weight: bold;
-    flex-shrink: 0;
-  }
-  .wp-coords {
-    flex: 1;
-    font-family: monospace;
-    font-size: 0.6rem;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .wp-alt-input {
-    width: 45px;
-    padding: 3px;
-    border: 1px solid var(--border);
-    border-radius: 5px;
-    font-size: 0.6rem;
-    text-align: center;
-  }
-  .wp-remove {
-    background: none;
-    border: none;
-    font-size: 1rem;
-    cursor: pointer;
-    color: var(--txt3);
-    padding: 0 3px;
-    flex-shrink: 0;
-  }
-  .wp-remove:hover {
-    color: var(--danger);
-  }
-  
-  /* Mission progress */
-  .mission-progress-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-top: 8px;
-    padding-top: 6px;
-    border-top: 1px solid var(--border);
-  }
-  .ms-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--txt3);
-    flex-shrink: 0;
-  }
-  .ms-dot.running { background: var(--warn); animation: pulse 0.8s infinite; }
-  .ms-dot.done { background: var(--ok); }
-  @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.4; }
-  }
-  
-  /* Data list */
-  .data-list {
-    max-height: 140px;
-    overflow-y: auto;
-  }
-  .data-item {
-    padding: 6px 8px;
-    border-bottom: 1px solid var(--border);
-    cursor: pointer;
-    font-size: 0.65rem;
-  }
-  .data-item:hover {
-    background: var(--surface2);
-  }
-  .data-item.aqi-1 { border-left: 2px solid #00E400; }
-  .data-item.aqi-2 { border-left: 2px solid #EAB308; }
-  .data-item.aqi-3 { border-left: 2px solid #FF7E00; }
-  .data-item.aqi-4 { border-left: 2px solid #FF0000; }
-  .data-item.aqi-5 { border-left: 2px solid #8F3F97; }
-  .data-item.aqi-6 { border-left: 2px solid #7E0023; }
-  
-  /* Export buttons */
-  .export-row {
-    display: flex;
-    gap: 8px;
-    margin-top: 8px;
-  }
-  .export-row .btn {
-    flex: 1;
-    font-size: 0.7rem;
-    padding: 5px;
-  }
-  
-  /* Log */
-  .event-log {
-    background: #1E293B;
-    color: #CBD5E1;
-    border-radius: 10px;
-    padding: 8px;
-    font-family: monospace;
-    font-size: 0.65rem;
-    max-height: 90px;
-    overflow-y: auto;
-  }
-  .log-line {
-    margin-bottom: 3px;
-    white-space: nowrap;
-    overflow-x: hidden;
-    text-overflow: ellipsis;
-  }
-  .log-line.ok { color: #34D399; }
-  .log-line.warn { color: #FBBF24; }
-  .log-line.err { color: #F87171; }
-  
-  /* Button base styles */
-  .btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 4px;
-    padding: 6px 10px;
-    border-radius: 8px;
-    font-size: 0.7rem;
-    font-weight: 500;
-    border: none;
-    cursor: pointer;
-    transition: all 0.2s;
-    font-family: inherit;
-  }
-  .btn:active {
-    transform: scale(0.97);
-  }
-  .btn-sm {
-    padding: 5px 10px;
-    font-size: 0.7rem;
-  }
-  .btn-primary {
-    background: var(--accent);
-    color: white;
-  }
-  .btn-primary:hover {
-    background: var(--accent-hov);
-  }
-  .btn-danger {
-    background: var(--danger);
-    color: white;
-  }
-  .btn-danger:hover {
-    background: #DC2626;
-  }
-  .btn-warn {
-    background: var(--warn);
-    color: white;
-  }
-  .btn-warn:hover {
-    background: #D97706;
-  }
-  .btn-ghost {
-    background: var(--surface2);
-    color: var(--txt);
-  }
-  .btn-ghost:hover {
-    background: var(--border);
-  }
-  
-  .map-type-btn.active {
-    background: var(--accent) !important;
-    color: white !important;
-  }
-  
-  /* Scrollbar */
-  .mission-panel::-webkit-scrollbar,
-  .wp-list::-webkit-scrollbar,
-  .data-list::-webkit-scrollbar,
-  .event-log::-webkit-scrollbar {
-    width: 4px;
-  }
-  .mission-panel::-webkit-scrollbar-track,
-  .wp-list::-webkit-scrollbar-track,
-  .data-list::-webkit-scrollbar-track,
-  .event-log::-webkit-scrollbar-track {
-    background: var(--surface2);
-    border-radius: 4px;
-  }
-  .mission-panel::-webkit-scrollbar-thumb,
-  .wp-list::-webkit-scrollbar-thumb,
-  .data-list::-webkit-scrollbar-thumb,
-  .event-log::-webkit-scrollbar-thumb {
-    background: var(--border-md);
-    border-radius: 4px;
-  }
-</style>
 {% endblock %}
 
 {% block main_content %}
-<div class="mission-layout">
-  <div id="map"></div>
-
-  <div class="mission-panel">
-    <!-- 1. Data Logging -->
-    <div class="card-modern">
-      <div class="card-header">Ghi dữ liệu cảm biến</div>
-      <div class="card-body">
-        <div class="data-logging-row">
-          <span style="font-size: 0.7rem;">Tự động thu thập khi đến waypoint</span>
-          <label class="toggle-switch">
-            <input type="checkbox" id="data-logging-toggle" checked>
-            <span class="toggle-slider"></span>
-          </label>
-        </div>
-      </div>
+<div class="mission-viewport">
+  <!-- Map Canvas Viewport (Left) -->
+  <div class="map-container-wrap">
+    <!-- Map Toolbar (Layer switching & UAV Center) -->
+    <div class="map-floating-bar">
+      <button class="layer-btn active" data-layer="roadmap">Đường phố</button>
+      <button class="layer-btn" data-layer="satellite">Vệ tinh</button>
+      <button class="layer-btn" data-layer="hybrid">Vệ tinh nhãn</button>
+      <div style="width:1px;height:18px;background:var(--line);margin:0 4px;"></div>
+      <button class="layer-btn" onclick="panToUAV()" title="Di chuyển bản đồ về vị trí UAV">Vị trí UAV</button>
     </div>
 
-    <!-- 2. Chất lượng không khí -->
-    <div class="card-modern">
-      <div class="card-header">Chất lượng không khí</div>
-      <div class="card-body">
-        <div class="sensor-grid">
-          <div class="sensor-item">
-            <div class="label">PM2.5</div>
-            <div class="value"><span id="quick-pm25">--</span><span class="unit"></span></div>
-          </div>
-          <div class="sensor-item">
-            <div class="label">CO₂</div>
-            <div class="value"><span id="quick-eco2">--</span><span class="unit"></span></div>
-          </div>
-          <div class="sensor-item">
-            <div class="label">TVOC</div>
-            <div class="value"><span id="quick-tvoc">--</span><span class="unit"></span></div>
-          </div>
-          <div class="sensor-item">
-            <div class="label">CO</div>
-            <div class="value"><span id="quick-co" style="color:#F97316;"></span><span class="unit"></span></div>
-          </div>
-          <div class="sensor-item">
-            <div class="label">NO₂</div>
-            <div class="value"><span id="quick-no2" style="color:#A855F7;"></span><span class="unit"></span></div>
-          </div>
-          <div class="sensor-item">
-            <div class="label">Nhiệt độ</div>
-            <div class="value"><span id="quick-temp">--</span><span class="unit"></span></div>
-          </div>
-          <div class="sensor-item">
-            <div class="label">Độ ẩm</div>
-            <div class="value"><span id="quick-hum">--</span><span class="unit"></span></div>
-          </div>
-          <div class="sensor-item">
-            <div class="label">AQI</div>
-            <div class="value"><span id="quick-aqi" style="font-weight: 700;"></span></div>
-          </div>
-        </div>
-      </div>
-    </div>
+    <!-- Leaflet Map Container -->
+    <div id="map"></div>
 
-    <!-- 3. Thu thập dữ liệu (Hold progress) -->
-    <div id="hold-progress" class="hold-progress">
-      <div class="hold-header">
-        <span>Đang thu thập dữ liệu</span>
-        <span id="hold-counter">0/10</span>
-      </div>
-      <div class="progress-bar-bg">
-        <div id="hold-bar" class="progress-bar-fill"></div>
-      </div>
-      <div id="hold-status" style="font-size: 0.6rem; color: var(--txt3); margin-top: 4px;"></div>
-    </div>
-
-    <!-- 4. Trạng thái UAV -->
-    <div class="card-modern">
-      <div class="card-header">Trạng thái UAV</div>
-      <div class="card-body">
-        <div class="stats-row">
-          <div class="stat-box">
-            <div class="label">Độ cao</div>
-            <div class="value" id="alt-val">N/A</div>
-          </div>
-          <div class="stat-box">
-            <div class="label">Vận tốc</div>
-            <div class="value" id="spd-val">-- m/s</div>
-          </div>
-          <div class="stat-box">
-            <div class="label">Hướng</div>
-            <div class="value" id="hdg-val">--°</div>
-          </div>
+    <!-- Realtime Altitude Telemetry Chart (AMSL vs TIME) -->
+    <div class="altitude-chart-panel" id="altitude-chart-panel">
+      <div class="alt-chart-header">
+        <div class="alt-chart-tabs">
+          <button class="alt-tab-btn active" data-tab="alt">ĐỘ CAO</button>
+          <button class="alt-tab-btn" data-tab="profile">BIÊN DẠNG</button>
+          <button class="alt-tab-btn" data-tab="err">SAI SỐ</button>
+          <button class="alt-tab-btn" data-tab="vs">TỐC ĐỘ LEO</button>
         </div>
-      </div>
-    </div>
-
-    <!-- 5. Điều khiển UAV -->
-    <div class="card-modern">
-      <div class="card-header">Điều khiển UAV</div>
-      <div class="card-body">
-        <div class="btn-row">
-          <button class="btn btn-danger" onclick="armVehicle()">ARM</button>
-          <button class="btn btn-ghost" onclick="disarmVehicle()">DISARM</button>
-          <button class="btn btn-warn" onclick="rtl()">RTL</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- 6. Bản đồ & Waypoint -->
-    <div class="card-modern">
-      <div class="card-header">Bản đồ & Waypoint</div>
-      <div class="card-body">
-        <!-- Map type buttons -->
-        <div class="map-tools-row">
-          <div class="map-type-group">
-            <button class="btn map-type-btn active" onclick="setMapType('roadmap',this)">Đường</button>
-            <button class="btn map-type-btn" onclick="setMapType('satellite',this)">Vệ tinh</button>
-            <button class="btn map-type-btn" onclick="setMapType('terrain',this)">Địa hình</button>
-          </div>
-          <button class="btn btn-primary" onclick="centerToUAV()">Định vị</button>
-        </div>
-        
-        <!-- Waypoint list -->
-        <div style="margin-top: 10px;">
-          <div style="font-size: 0.65rem; color: var(--txt3); margin-bottom: 5px;">Danh sách waypoint</div>
-          <div id="wp-list-wrap" class="wp-list">
-            <div style="text-align:center; color:var(--txt3); padding: 8px;" id="wp-empty">
-              ✏️ Click lên bản đồ để thêm
-            </div>
-          </div>
-        </div>
-        
-        <!-- Upload progress -->
-        <div class="progress-bar-bg" style="margin: 6px 0;">
-          <div class="progress-bar-fill" id="upload-bar" style="background: var(--accent);"></div>
-        </div>
-        
-        <!-- Mission buttons -->
-        <div class="btn-row">
-          <button class="btn btn-ghost" onclick="clearWaypoints()">Xóa</button>
-          <button class="btn btn-primary" onclick="uploadMission()">Upload</button>
-          <button class="btn btn-warn" onclick="startMission()">Start</button>
-          <button class="btn btn-ghost" onclick="stopMission()">Stop</button>
-        </div>
-        
-        <!-- Mission progress -->
-        <div class="mission-progress-row">
-          <span class="ms-dot idle" id="ms-dot"></span>
-          <span id="ms-text" style="font-size: 0.7rem;">-- / --</span>
-        </div>
-      </div>
-    </div>
-
-    <div class="card-modern">
-      <div class="card-header">
-        Dữ liệu đã thu thập
-        <span id="data-count" style="float: right; font-size: 0.6rem;">(0)</span>
-      </div>
-      <div class="card-body">
-        <div id="data-list" class="data-list">
-          <div style="text-align:center; color:var(--txt3); padding: 12px;">Chưa có dữ liệu</div>
-        </div>
-        <div class="export-row">
-          <button class="btn btn-primary" onclick="exportDataCSV()">CSV (Mission)</button>
-          <button class="btn btn-ghost" onclick="exportDataJSON()">JSON (Mission)</button>
-        </div>
-      </div>
-    </div>
-
-    <div class="card-modern">
-      <div class="card-header">CSV Logger (30 samples)</div>
-      <div class="card-body">
-        <div style="margin-bottom: 12px;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-            <span style="font-size: 0.7rem;">Vị trí ghi chú:</span>
-            <input type="text" id="csv-position" placeholder="Tên vị trí..." style="background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; font-size: 0.7rem; width: 150px;">
-          </div>
-          <button class="btn btn-primary" id="start-csv-btn" style="width: 100%; margin-bottom: 8px;" onclick="startCSVLogging()">
-            Bắt đầu thu thập 30 mẫu
-          </button>
-        </div>
-
-        <div id="csv-progress" style="display: none;">
-          <div style="font-size: 0.65rem; margin-bottom: 4px;">
-            <span>Đang thu thập dữ liệu CSV</span>
-            <span id="csv-counter" style="float: right;">0/30</span>
-          </div>
-          <div class="progress-bar-bg" style="height: 6px;">
-            <div id="csv-bar" class="progress-bar-fill" style="width: 0%; background: var(--accent);"></div>
-          </div>
-          <div id="csv-status" style="font-size: 0.6rem; color: var(--txt3); margin-top: 4px;"></div>
-        </div>
-        
-        <div id="csv-download-section" style="display: none; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border);">
-          <button class="btn btn-ok" onclick="downloadCSVFile()" style="background: var(--ok); color: white; width: 100%;">
-            ⬇️ Tải file CSV về máy
+        <div class="alt-chart-meta">
+          <span class="alt-pts-counter" id="alt-pts-counter">0 pts</span>
+          <button class="alt-toggle-btn" id="alt-toggle-btn" onclick="toggleAltitudeChart()" title="Thu nhỏ / mở rộng đồ thị độ cao">
+            <span id="alt-toggle-icon">v</span> <span id="alt-toggle-text">Ẩn đồ thị</span>
           </button>
         </div>
       </div>
-    </div>
-
-    <!-- 8. System Log -->
-    <div class="card-modern">
-      <div class="card-header">System Log</div>
-      <div class="card-body" style="padding: 8px;">
-        <div class="event-log" id="log"></div>
+      <div class="alt-chart-body" id="alt-chart-body">
+        <div class="alt-chart-subbar">
+          <span class="alt-axes-label">ĐỒ THỊ ĐỘ CAO THEO THỜI GIAN (m)</span>
+          <div class="alt-chart-legend">
+            <span class="legend-item target"><span class="legend-dash">--</span> Mục tiêu (35m)</span>
+            <span class="legend-item actual"><span class="legend-line">—</span> Thực tế</span>
+            <span class="legend-item terrain"><span class="legend-line">—</span> Mặt đất (7m)</span>
+          </div>
+        </div>
+        <div class="alt-canvas-wrap">
+          <canvas id="altitude-canvas"></canvas>
+        </div>
       </div>
     </div>
   </div>
-</div>
 
-<script>
-
-function getAQILevelVN(aqiValue) {
-  const aqi = Number(aqiValue);
-  if (!Number.isFinite(aqi) || aqi <= 50) return 1;
-  if (aqi <= 100) return 2;
-  if (aqi <= 150) return 3;
-  if (aqi <= 200) return 4;
-  if (aqi <= 300) return 5;
-  return 6;
-}
-
-function getAQIColorVN(aqiValue) {
-  const colors = {1:'#00E400', 2:'#EAB308', 3:'#FF7E00', 4:'#FF0000', 5:'#8F3F97', 6:'#7E0023'};
-  return colors[getAQILevelVN(aqiValue)] || '#94A3B8';
-}
-
-function formatNumberQuick(value, decimals = 1) {
-  if (value === undefined || value === null) return '--';
-  const num = parseFloat(value);
-  if (isNaN(num)) return '--';
-  return num.toFixed(decimals);
-}
-
-let csvPollingInterval = null;
-
-async function startCSVLogging() {
-  const position = document.getElementById('csv-position').value || 'unknown_location';
-  
-  try {
-    const response = await fetch('/start-csv-logging', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        position: position,
-        max_samples: 30,
-        filename: `sensor_data_${Date.now()}.csv`
-      })
-    });
-    const data = await response.json();
-    
-    if (data.success) {
-      // Hiển thị progress bar
-      document.getElementById('csv-progress').style.display = 'block';
-      document.getElementById('csv-download-section').style.display = 'none';
-      document.getElementById('start-csv-btn').disabled = true;
-      document.getElementById('start-csv-btn').textContent = '⏳ Đang thu thập...';
-      
-      // Bắt đầu polling để cập nhật tiến độ
-      if (csvPollingInterval) clearInterval(csvPollingInterval);
-      csvPollingInterval = setInterval(pollCSVStatus, 1000);
-      
-      log(`Đã bắt đầu thu thập 30 mẫu dữ liệu tại vị trí: ${position}`, 'ok');
-    } else {
-      log(`Lỗi: ${data.message}`, 'err');
-    }
-  } catch (err) {
-    log(`Lỗi kết nối: ${err.message}`, 'err');
-  }
-}
-
-async function pollCSVStatus() {
-  try {
-    const response = await fetch('/csv-logging-status');
-    const data = await response.json();
-    
-    if (data.success && data.status) {
-      const status = data.status;
-      const collected = status.collected;
-      const maxSamples = status.max_samples;
-      const percent = (collected / maxSamples) * 100;
-      
-      document.getElementById('csv-counter').textContent = `${collected}/${maxSamples}`;
-      document.getElementById('csv-bar').style.width = percent + '%';
-      document.getElementById('csv-status').textContent = status.active ? 
-        `Đang thu thập... (${collected}/${maxSamples})` : 
-        `Hoàn thành! Đã thu thập ${collected} mẫu.`;
-      
-      // Nếu đã hoàn thành hoặc không còn active
-      if (!status.active || collected >= maxSamples) {
-        if (csvPollingInterval) clearInterval(csvPollingInterval);
-        csvPollingInterval = null;
-        
-        document.getElementById('start-csv-btn').disabled = false;
-        document.getElementById('start-csv-btn').textContent = 'Bắt đầu thu thập 30 mẫu';
-        
-        if (collected > 0) {
-          document.getElementById('csv-download-section').style.display = 'block';
-          log(`✅ Đã thu thập xong ${collected} mẫu dữ liệu! Bạn có thể tải file CSV về.`, 'ok');
-        }
-        
-        // Ẩn progress sau 3 giây nếu hoàn thành
-        if (collected >= maxSamples) {
-          setTimeout(() => {
-            document.getElementById('csv-progress').style.display = 'none';
-          }, 3000);
-        }
-      }
-    }
-  } catch (err) {
-    console.error('Polling error:', err);
-  }
-}
-
-async function downloadCSVFile() {
-  try {
-    window.open('/download-csv', '_blank');
-    log('Đang tải file CSV về máy...', 'info');
-  } catch (err) {
-    log(`Lỗi tải file: ${err.message}`, 'err');
-  }
-}
-
-function updateDataList(dataPoints) {
-  const container = document.getElementById('data-list');
-  if (!container) return;
-  
-  if (!dataPoints || dataPoints.length === 0) {
-    container.innerHTML = '<div style="text-align:center;color:var(--txt3);padding:20px;">Chưa có dữ liệu</div>';
-    return;
-  }
-  
-  container.innerHTML = dataPoints.slice().reverse().map(point => {
-    const date = new Date(point.time);
-    const timeStr = date.toLocaleTimeString('vi-VN');
-    const aqiClass = `aqi-${getAQILevelVN(point.aqi)}`;
-    
-    return `
-      <div class="data-item ${aqiClass}" onclick="flyToDataPoint(${point.lat}, ${point.lon})">
-        <div style="display: flex; justify-content: space-between;">
-          <strong>WP${point.waypoint_index + 1}</strong>
-          <span style="font-size: 0.65rem;">${timeStr}</span>
+  <!-- Control & Telemetry Panel (Right: 340px) -->
+  <aside class="cockpit-panel">
+    <!-- 1. Dual Flight Gauges: ATTITUDE & COMPASS -->
+    <div class="cockpit-instruments-grid">
+      <!-- Attitude Indicator -->
+      <div class="instrument-card">
+        <div class="instrument-title">GÓC NGHIÊNG</div>
+        <div class="instrument-dial-wrap">
+          <svg class="dial-svg" viewBox="0 0 100 100">
+            <defs>
+              <clipPath id="horizon-clip">
+                <circle cx="50" cy="50" r="43"/>
+              </clipPath>
+            </defs>
+            <g clip-path="url(#horizon-clip)">
+              <g id="horizon-sphere" style="transform-origin: 50px 50px; transition: transform 0.15s ease-out;">
+                <!-- Sky -->
+                <rect x="-50" y="-50" width="200" height="100" fill="#1b5299"/>
+                <!-- Earth -->
+                <rect x="-50" y="50" width="200" height="100" fill="#7a4d2b"/>
+                <line x1="-50" y1="50" x2="150" y2="50" stroke="#ffffff" stroke-width="1.5"/>
+              </g>
+            </g>
+            <circle cx="50" cy="50" r="43" fill="none" stroke="#d3d8e0" stroke-width="1.5"/>
+            <line x1="26" y1="50" x2="42" y2="50" stroke="#f59e0b" stroke-width="2.5" stroke-linecap="round"/>
+            <line x1="58" y1="50" x2="74" y2="50" stroke="#f59e0b" stroke-width="2.5" stroke-linecap="round"/>
+            <circle cx="50" cy="50" r="3" fill="none" stroke="#f59e0b" stroke-width="2"/>
+          </svg>
         </div>
-        <div style="display: flex; gap: 12px; margin-top: 4px; font-size: 0.7rem;">
-          <span>📍 ${point.lat.toFixed(5)}, ${point.lon.toFixed(5)}</span>
-          <span>⬆️ ${point.alt.toFixed(0)}m</span>
+        <div class="instrument-subtext">P: <span id="val-pitch">0.0</span>° R: <span id="val-roll">0.0</span>°</div>
+      </div>
+
+      <!-- Compass Indicator -->
+      <div class="instrument-card">
+        <div class="instrument-title">HƯỚNG LA BÀN</div>
+        <div class="instrument-dial-wrap">
+          <svg class="dial-svg" viewBox="0 0 100 100">
+            <circle cx="50" cy="50" r="43" fill="#ffffff" stroke="#d3d8e0" stroke-width="1.5"/>
+            <line x1="50" y1="14" x2="50" y2="86" stroke="#f1f5f9" stroke-width="1"/>
+            <line x1="14" y1="50" x2="86" y2="50" stroke="#f1f5f9" stroke-width="1"/>
+            <line x1="50" y1="8" x2="50" y2="13" stroke="#4d5766" stroke-width="1.5"/>
+            <line x1="50" y1="87" x2="50" y2="92" stroke="#94a3b8" stroke-width="1"/>
+            <line x1="8" y1="50" x2="13" y2="50" stroke="#94a3b8" stroke-width="1"/>
+            <line x1="87" y1="50" x2="92" y2="50" stroke="#94a3b8" stroke-width="1"/>
+            <line x1="24" y1="24" x2="27" y2="27" stroke="#cbd5e1" stroke-width="1"/>
+            <line x1="76" y1="24" x2="73" y2="27" stroke="#cbd5e1" stroke-width="1"/>
+            <line x1="24" y1="76" x2="27" y2="73" stroke="#cbd5e1" stroke-width="1"/>
+            <line x1="76" y1="76" x2="73" y2="73" stroke="#cbd5e1" stroke-width="1"/>
+            
+            <text x="50" y="23" font-family="'Inter', sans-serif" font-size="11" font-weight="900" fill="#b42318" text-anchor="middle">B</text>
+            <text x="82" y="53.5" font-family="'Inter', sans-serif" font-size="9" font-weight="700" fill="#4d5766" text-anchor="middle">Đ</text>
+            <text x="50" y="83" font-family="'Inter', sans-serif" font-size="9" font-weight="700" fill="#4d5766" text-anchor="middle">N</text>
+            <text x="18" y="53.5" font-family="'Inter', sans-serif" font-size="9" font-weight="700" fill="#4d5766" text-anchor="middle">T</text>
+            
+            <g id="compass-needle" style="transform-origin: 50px 50px; transition: transform 0.25s linear;">
+              <polygon points="50,38 46.5,52 53.5,52" fill="#1a4d8f"/>
+              <circle cx="50" cy="57" r="1.8" fill="#1a4d8f"/>
+            </g>
+          </svg>
         </div>
-        <div style="display: flex; gap: 8px; margin-top: 4px; flex-wrap: wrap;">
-          <span style="background: #EF4444; color:#fff; padding: 2px 6px; border-radius: 4px;">PM2.5: ${point.pm25.toFixed(1)}</span>
-          <span style="background: #F59E0B; color:#fff; padding: 2px 6px; border-radius: 4px;">CO₂: ${point.eco2.toFixed(0)}</span>
-          ${point.co  != null ? `<span style="background: #F97316; color:#fff; padding: 2px 6px; border-radius: 4px;">CO: ${point.co.toFixed(2)}</span>` : ''}
-          ${point.no2 != null ? `<span style="background: #A855F7; color:#fff; padding: 2px 6px; border-radius: 4px;">NO₂: ${point.no2.toFixed(1)}</span>` : ''}
-          <span style="background: #8B5CF6; color:#fff; padding: 2px 6px; border-radius: 4px;">AQI: ${point.aqi}</span>
-        </div>
-        <div style="display: flex; gap: 8px; margin-top: 4px; font-size: 0.65rem; color: var(--txt3);">
-          <span>🌡️ ${point.temp.toFixed(1)}°C</span>
-          <span>💧 ${point.hum.toFixed(1)}%</span>
-          <span>📊 ${point.sample_count || 0} mẫu</span>
+        <div class="compass-pill">
+          <span id="val-heading" class="tabular-num">000.0</span>°
         </div>
       </div>
-    `;
-  }).join('');
-}
+    </div>
 
-async function updateAirQualityDisplay() {
-  try {
-    const tele = await fetch('/api/telemetry').then(r => r.json());
-    if (tele.success && tele.telemetry) {
-      const s = tele.telemetry;
-      document.getElementById('quick-pm25').innerHTML = formatNumberQuick(s.pm25, 1) + '<span class="unit"> µg/m³</span>';
-      document.getElementById('quick-eco2').innerHTML = formatNumberQuick(s.eco2, 0) + '<span class="unit"> mg/m³</span>';
-      document.getElementById('quick-tvoc').innerHTML = formatNumberQuick(s.tvoc, 0) + '<span class="unit"> µg/m³</span>';
-      
-      // Fix: Display CO with proper formatting
-      const coValue = s.co !== undefined && s.co !== null ? s.co : '--';
-      const coDisplay = coValue !== '--' ? formatNumberQuick(coValue, 2) : '--';
-      document.getElementById('quick-co').innerHTML = coDisplay + (coValue !== '--' ? '<span class="unit"> mg/m³</span>' : '');
-      
-      // Fix: Display NO2 with proper formatting
-      const no2Value = s.no2 !== undefined && s.no2 !== null ? s.no2 : '--';
-      const no2Display = no2Value !== '--' ? formatNumberQuick(no2Value, 1) : '--';
-      document.getElementById('quick-no2').innerHTML = no2Display + (no2Value !== '--' ? '<span class="unit"> µg/m³</span>' : '');
-      
-      document.getElementById('quick-temp').innerHTML = formatNumberQuick(s.temp, 1) + '<span class="unit"> °C</span>';
-      document.getElementById('quick-hum').innerHTML = formatNumberQuick(s.hum, 1) + '<span class="unit"> %</span>';
-      
-      const aqi = s.aqi ?? 0;
-      const aqiEl = document.getElementById('quick-aqi');
-      aqiEl.textContent = aqi;
-      aqiEl.style.color = getAQIColorVN(aqi);
-    }
-  } catch(err) {
-    console.error(err);
-  }
-}
+    <!-- 2. Compact Flight Telemetry Bar -->
+    <div class="flight-mini-bar">
+      <div class="flight-mini-cell">
+        <span class="flight-mini-lbl">Độ cao</span>
+        <span class="flight-mini-val" id="val-alt">0.0m</span>
+      </div>
+      <div class="flight-mini-cell">
+        <span class="flight-mini-lbl">Tốc độ</span>
+        <span class="flight-mini-val" id="val-spd">0.0m/s</span>
+      </div>
+      <div class="flight-mini-cell">
+        <span class="flight-mini-lbl">Cách điểm tới</span>
+        <span class="flight-mini-val" id="val-dist">--</span>
+      </div>
+      <div class="flight-mini-cell">
+        <span class="flight-mini-lbl">Pin thiết bị</span>
+        <span class="flight-mini-val" id="val-bat" style="color:var(--ok);">95% · 16.5V</span>
+      </div>
+    </div>
 
-setInterval(updateAirQualityDisplay, 2000);
-updateAirQualityDisplay();
-</script>
+    <!-- 3. Control Action Buttons (Clean, Understated, No Icons) -->
+    <div class="cockpit-actions-box">
+      <div class="cockpit-btn-row">
+        <button class="btn-cockpit btn-success" onclick="startMission()" title="Bắt đầu bay tự động theo các điểm đo">
+          Bắt đầu bay
+        </button>
+        <button class="btn-cockpit btn-primary" onclick="triggerTakeoff()" title="Cất cánh lên độ cao hành trình">
+          Cất cánh
+        </button>
+      </div>
+      <div class="cockpit-btn-row">
+        <button class="btn-cockpit btn-primary" onclick="uploadMissionToServer()" title="Nạp danh sách tọa độ lên thiết bị">
+          Nạp lộ trình
+        </button>
+        <button class="btn-cockpit btn-danger" onclick="triggerRTL()" title="Hạ cánh an toàn xuống mặt đất">
+          Hạ cánh
+        </button>
+        <button class="btn-cockpit btn-outline" onclick="clearAllWaypoints()" title="Xóa toàn bộ điểm đã chọn">
+          Xóa điểm
+        </button>
+      </div>
+    </div>
+
+    <!-- 4. Air Quality Sensors (Compact & Scannable) -->
+    <div class="cockpit-sensor-section">
+      <div class="sensor-section-header">
+        <span class="sensor-section-title">CHỈ SỐ KHÔNG KHÍ HIỆN TẠI</span>
+        <span class="aqi-compact-tag" id="aqi-badge" style="color:var(--ok);border-color:var(--ok);background:var(--ok-bg);">
+          AQI <span id="aqi-score-num">--</span> · <span id="aqi-cat-name">Trung bình</span>
+        </span>
+      </div>
+
+      <!-- 4x2 Clean Grid -->
+      <div class="sensors-compact-grid">
+        <div class="sensor-chip">
+          <span class="chip-lbl">Bụi PM2.5</span>
+          <div class="chip-val-row">
+            <span class="chip-val" id="val-pm25" style="color:var(--danger);">--</span>
+            <span class="chip-unit">µg/m³</span>
+          </div>
+        </div>
+        <div class="sensor-chip">
+          <span class="chip-lbl">Bụi PM10</span>
+          <div class="chip-val-row">
+            <span class="chip-val" id="val-pm10">--</span>
+            <span class="chip-unit">µg/m³</span>
+          </div>
+        </div>
+        <div class="sensor-chip">
+          <span class="chip-lbl">Khí CO₂</span>
+          <div class="chip-val-row">
+            <span class="chip-val" id="val-eco2" style="color:var(--warn);">--</span>
+            <span class="chip-unit">mg/m³</span>
+          </div>
+        </div>
+        <div class="sensor-chip">
+          <span class="chip-lbl">TVOC</span>
+          <div class="chip-val-row">
+            <span class="chip-val" id="val-tvoc">--</span>
+            <span class="chip-unit">µg/m³</span>
+          </div>
+        </div>
+        <div class="sensor-chip">
+          <span class="chip-lbl">Khí CO</span>
+          <div class="chip-val-row">
+            <span class="chip-val" id="val-co">--</span>
+            <span class="chip-unit">mg/m³</span>
+          </div>
+        </div>
+        <div class="sensor-chip">
+          <span class="chip-lbl">Khí NO₂</span>
+          <div class="chip-val-row">
+            <span class="chip-val" id="val-no2">--</span>
+            <span class="chip-unit">µg/m³</span>
+          </div>
+        </div>
+        <div class="sensor-chip">
+          <span class="chip-lbl">Nhiệt độ</span>
+          <div class="chip-val-row">
+            <span class="chip-val" id="val-temp">--</span>
+            <span class="chip-unit">°C</span>
+          </div>
+        </div>
+        <div class="sensor-chip">
+          <span class="chip-lbl">Độ ẩm</span>
+          <div class="chip-val-row">
+            <span class="chip-val" id="val-hum">--</span>
+            <span class="chip-unit">%</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Holding Bar Indicator -->
+      <div class="holding-bar-wrap" id="holding-wrap">
+        <div class="holding-bar-header">
+          <span>● Đang lấy mẫu tại điểm đo</span>
+          <span id="holding-ratio" class="tabular-num">0/10</span>
+        </div>
+        <div class="holding-bar-line">
+          <div class="holding-bar-fill" id="holding-fill"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 5. Tabbed Workspace: Waypoint Planner & Sampling Log -->
+    <div class="cockpit-tabs-box">
+      <div class="tabs-header">
+        <button class="tab-btn active" id="tab-wp-btn" onclick="switchCockpitTab('wp')">
+          Điểm đo (<span id="wp-count">0</span>)
+        </button>
+        <button class="tab-btn" id="tab-log-btn" onclick="switchCockpitTab('log')">
+          Dữ liệu đã đo
+        </button>
+      </div>
+
+      <!-- Tab 1: Waypoint List -->
+      <div class="tab-content active" id="tab-wp-content">
+        <div class="wp-compact-list" id="wp-list-container">
+          <!-- Rendered via JS -->
+        </div>
+      </div>
+
+      <!-- Tab 2: Sampling Data Log -->
+      <div class="tab-content" id="tab-log-content">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+          <button class="btn-cockpit btn-danger" onclick="clearCollectedHistory()" style="height:24px;padding:0 8px;font-size:10px;" title="Xóa toàn bộ lịch sử các điểm đã đo">
+            Xóa lịch sử
+          </button>
+          <a href="/export-waypoint-csv" class="btn-cockpit btn-primary" style="height:24px;padding:0 10px;font-size:10px;text-decoration:none;display:inline-flex;align-items:center;gap:4px;">
+            ⬇ Xuất file CSV
+          </a>
+        </div>
+        <table style="width:100%;border-collapse:collapse;font-size:10.5px;text-align:left;table-layout:fixed;">
+          <thead>
+            <tr style="background:var(--surface-2);color:var(--text-3);border-bottom:1px solid var(--line);">
+              <th style="padding:4px 3px;width:30px;text-align:center;">Điểm</th>
+              <th style="padding:4px 3px;width:44px;">Giờ</th>
+              <th style="padding:4px 3px;width:42px;">PM2.5</th>
+              <th style="padding:4px 3px;width:38px;">CO₂</th>
+              <th style="padding:4px 3px;width:58px;text-align:center;">AQI</th>
+              <th style="padding:4px 3px;width:68px;text-align:center;">Thao tác</th>
+            </tr>
+          </thead>
+          <tbody id="collected-data-table-body">
+            <!-- Rendered via JS -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </aside>
+</div>
 {% endblock %}
 
 {% block body_script %}
 <script src="{{ url_for('static', filename='script.js') }}"></script>
 <script>
-  document.addEventListener('DOMContentLoaded', function() {
-    initMap();
-  });
+  function panToUAV() {
+    if (vehicleMarker && map) {
+      map.setView(vehicleMarker.getLatLng(), 18, { animate: true });
+    }
+  }
+
+  function switchCockpitTab(tabKey) {
+    const wpBtn = document.getElementById('tab-wp-btn');
+    const logBtn = document.getElementById('tab-log-btn');
+    const wpContent = document.getElementById('tab-wp-content');
+    const logContent = document.getElementById('tab-log-content');
+
+    if (tabKey === 'wp') {
+      wpBtn.classList.add('active');
+      logBtn.classList.remove('active');
+      wpContent.classList.add('active');
+      logContent.classList.remove('active');
+    } else {
+      logBtn.classList.add('active');
+      wpBtn.classList.remove('active');
+      logContent.classList.add('active');
+      wpContent.classList.remove('active');
+    }
+  }
 </script>
 {% endblock %}
