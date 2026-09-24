@@ -204,6 +204,26 @@
       "aqi": 154,
       "aqi_category": "Xấu",
       "aqi_color": "#ef4444"
+    },
+    {
+      "wp": 7,
+      "filename": "wp07_20260924_202215.csv",
+      "samples": 10,
+      "lat": 16.075098,
+      "lon": 108.154178,
+      "alt": 35.0,
+      "time": "2026-09-24 20:22:15",
+      "pm25": 49.2,
+      "pm10": 72.4,
+      "eco2": 513.0,
+      "tvoc": 115.0,
+      "co": 0.62,
+      "no2": 28.9,
+      "temp": 28.4,
+      "hum": 68.6,
+      "aqi": 98,
+      "aqi_category": "Trung bình",
+      "aqi_color": "#eab308"
     }
   ]
 }

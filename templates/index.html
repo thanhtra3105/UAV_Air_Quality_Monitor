@@ -47,7 +47,7 @@
         <div class="alt-chart-subbar">
           <span class="alt-axes-label">ĐỒ THỊ ĐỘ CAO THEO THỜI GIAN (m)</span>
           <div class="alt-chart-legend">
-            <span class="legend-item target"><span class="legend-dash">--</span> Mục tiêu (35m)</span>
+            <span class="legend-item target"><span class="legend-dash">--</span> Mục tiêu (<span id="legend-target-alt">35m</span>)</span>
             <span class="legend-item actual"><span class="legend-line">—</span> Thực tế</span>
             <span class="legend-item terrain"><span class="legend-line">—</span> Mặt đất (7m)</span>
           </div>
@@ -142,6 +142,26 @@
       <div class="flight-mini-cell">
         <span class="flight-mini-lbl">Pin thiết bị</span>
         <span class="flight-mini-val" id="val-bat" style="color:var(--ok);">95% · 16.5V</span>
+      </div>
+    </div>
+
+    <!-- 2b. Flight Altitude Configuration -->
+    <div class="cockpit-alt-config">
+      <div class="alt-config-header">
+        <span class="alt-config-lbl">ĐỘ CAO CẤT CÁNH & BAY</span>
+        <span class="alt-config-badge"><strong id="takeoff-alt-display">35</strong> m</span>
+      </div>
+      <div class="alt-config-row">
+        <div class="alt-input-box">
+          <button type="button" class="alt-btn-step" onclick="stepAltitude(-5)" title="Giảm 5 mét">-</button>
+          <input type="number" id="takeoff-alt-input" min="5" max="150" step="1" value="35" onchange="setTakeoffAltitude(this.value)" title="Nhập độ cao hành trình (m)">
+          <button type="button" class="alt-btn-step" onclick="stepAltitude(5)" title="Tăng 5 mét">+</button>
+        </div>
+        <div class="alt-presets">
+          <button type="button" class="alt-preset-chip" data-alt="20" onclick="setTakeoffAltitude(20)">20m</button>
+          <button type="button" class="alt-preset-chip active" data-alt="35" onclick="setTakeoffAltitude(35)">35m</button>
+          <button type="button" class="alt-preset-chip" data-alt="50" onclick="setTakeoffAltitude(50)">50m</button>
+        </div>
       </div>
     </div>
 

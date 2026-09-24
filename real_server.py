@@ -1505,11 +1505,44 @@ def upload_mission():
         "uart_transmitted": uart_sent
     })
 
+@app.route("/set-altitude", methods=["POST"])
+def set_altitude():
+    global CRUISE_ALTITUDE
+    data = request.get_json(silent=True) or {}
+    alt_val = data.get("altitude", data.get("alt"))
+    if alt_val is not None:
+        try:
+            val = float(alt_val)
+            val = max(5.0, min(150.0, val))
+            with data_lock:
+                CRUISE_ALTITUDE = val
+                state["target_altitude"] = CRUISE_ALTITUDE
+                for w in current_waypoints:
+                    w["alt"] = CRUISE_ALTITUDE
+            print(f"[Mission] 📐 Đã cài đặt độ cao cất cánh & hành trình: {CRUISE_ALTITUDE}m")
+            return jsonify({"success": True, "target_altitude": CRUISE_ALTITUDE, "message": f"Đã thiết lập độ cao {CRUISE_ALTITUDE}m"})
+        except Exception as e:
+            return jsonify({"success": False, "message": str(e)}), 400
+    return jsonify({"success": False, "message": "Thiếu thông số altitude"}), 400
+
 @app.route("/start-mission", methods=["POST"])
 def start_mission():
-    global is_flying, is_holding, current_waypoint_index, flight_state
+    global is_flying, is_holding, current_waypoint_index, flight_state, CRUISE_ALTITUDE
     if not current_waypoints:
         return jsonify({"success": False, "message": "Chưa có Waypoint nào được tải lên!"}), 400
+
+    data = request.get_json(silent=True) or {}
+    if "alt" in data or "altitude" in data:
+        try:
+            val = float(data.get("alt", data.get("altitude")))
+            val = max(5.0, min(150.0, val))
+            with data_lock:
+                CRUISE_ALTITUDE = val
+                state["target_altitude"] = CRUISE_ALTITUDE
+                for w in current_waypoints:
+                    w["alt"] = CRUISE_ALTITUDE
+        except Exception:
+            pass
 
     with data_lock:
         state["armed"] = True
@@ -1520,18 +1553,31 @@ def start_mission():
         if state["gps"]["alt"] < 5.0:
             flight_state = "TAKEOFF"
             is_flying = False
-            print("[Mission] 🚀 Cất cánh (TAKEOFF) bắt đầu nhiệm vụ")
+            print(f"[Mission] 🚀 Cất cánh (TAKEOFF) bắt đầu nhiệm vụ lên {CRUISE_ALTITUDE}m")
         else:
             flight_state = "RUNNING"
             is_flying = True
-            print("[Mission] 🚀 Bắt đầu bay hành trình (RUNNING)")
+            print(f"[Mission] 🚀 Bắt đầu bay hành trình (RUNNING) giữ độ cao {CRUISE_ALTITUDE}m")
 
-    send_uart_command({"cmd": "start_mission"})
-    return jsonify({"success": True, "message": "Nhiệm vụ bắt đầu thành công"})
+    send_uart_command({"cmd": "start_mission", "alt": CRUISE_ALTITUDE})
+    return jsonify({"success": True, "message": "Nhiệm vụ bắt đầu thành công", "target_altitude": CRUISE_ALTITUDE})
 
 @app.route("/takeoff", methods=["POST"])
 def takeoff():
-    global flight_state, is_flying, is_holding
+    global flight_state, is_flying, is_holding, CRUISE_ALTITUDE
+    data = request.get_json(silent=True) or {}
+    if "alt" in data or "altitude" in data:
+        try:
+            val = float(data.get("alt", data.get("altitude")))
+            val = max(5.0, min(150.0, val))
+            with data_lock:
+                CRUISE_ALTITUDE = val
+                state["target_altitude"] = CRUISE_ALTITUDE
+                for w in current_waypoints:
+                    w["alt"] = CRUISE_ALTITUDE
+        except Exception:
+            pass
+
     with data_lock:
         state["armed"] = True
         flight_state = "TAKEOFF"
@@ -1539,8 +1585,8 @@ def takeoff():
         is_holding = False
         state["mode"] = "GUIDED"
     send_uart_command({"cmd": "takeoff", "alt": CRUISE_ALTITUDE})
-    print("[Control] 🛫 Lệnh cất cánh (TAKEOFF) đã gửi qua UART")
-    return jsonify({"success": True, "message": "UAV đang cất cánh", "flight_state": flight_state})
+    print(f"[Control] 🛫 Lệnh cất cánh (TAKEOFF lên {CRUISE_ALTITUDE}m) đã gửi qua UART")
+    return jsonify({"success": True, "message": f"UAV đang cất cánh lên {CRUISE_ALTITUDE}m", "flight_state": flight_state, "target_altitude": CRUISE_ALTITUDE})
 
 @app.route("/save-current-waypoint", methods=["POST"])
 def save_current_waypoint():

@@ -481,10 +481,10 @@
         <div class="armed-indicator disarmed" id="t-armed">--</div>
       </div>
       <div style="margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap;">
-        <button class="btn btn-danger btn-sm" onclick="apiCall('/arm', 'POST', 'ARM')">ARM</button>
+        <button class="btn btn-danger btn-sm" onclick="if(confirm('⚠️ XÁC NHẬN ARM: Bạn có chắc chắn muốn mở khóa động cơ?')) apiCall('/arm', 'POST', 'ARM')">ARM</button>
         <button class="btn btn-ghost btn-sm" onclick="apiCall('/disarm', 'POST', 'DISARM')">DISARM</button>
-        <button class="btn btn-primary btn-sm" onclick="apiCall('/takeoff', 'POST', 'CẤT CÁNH')">CẤT CÁNH</button>
-        <button class="btn btn-warn btn-sm" onclick="apiCall('/rtl', 'POST', 'RTL')">RTL</button>
+        <button class="btn btn-primary btn-sm" onclick="if(confirm('⚠️ XÁC NHẬN CẤT CÁNH: Bạn có chắc chắn muốn UAV cất cánh?')) apiCall('/takeoff', 'POST', 'CẤT CÁNH')">CẤT CÁNH</button>
+        <button class="btn btn-warn btn-sm" onclick="if(confirm('⚠️ XÁC NHẬN HẠ CÁNH (RTL): Bạn có chắc chắn muốn UAV quay về điểm xuất phát và hạ cánh?')) apiCall('/rtl', 'POST', 'RTL')">RTL (HẠ CÁNH)</button>
         <button class="btn btn-ghost btn-sm" onclick="setFlightMode('LOITER')">LOITER</button>
         <button class="btn btn-ghost btn-sm" onclick="setFlightMode('GUIDED')">GUIDED</button>
         <button class="btn btn-ghost btn-sm" onclick="setFlightMode('AUTO')">AUTO</button>
@@ -799,14 +799,19 @@ function onUAVDataUpdate(event) {
   if (voltEl) {
     voltEl.textContent = `(${batVolt.toFixed(1)}V)`;
   }
-  document.getElementById('t-spd').textContent = formatNumber(gps.speed, 2);
-  document.getElementById('t-hdg').textContent = formatNumber(gps.heading, 0);
-  document.getElementById('t-mode').textContent = state.mode || '--';
+  const spdEl = document.getElementById('t-spd');
+  if (spdEl) spdEl.textContent = formatNumber(gps ? gps.speed : 0, 2);
+  const hdgEl = document.getElementById('t-hdg');
+  if (hdgEl) hdgEl.textContent = formatNumber(gps ? gps.heading : 0, 0);
+  const modeEl = document.getElementById('t-mode');
+  if (modeEl) modeEl.textContent = state.mode || '--';
   
   const armedElement = document.getElementById('t-armed');
-  const isArmed = state.armed;
-  armedElement.textContent = isArmed ? '● ARMED' : '○ DISARMED';
-  armedElement.className = `armed-indicator ${isArmed ? 'armed' : 'disarmed'}`;
+  if (armedElement) {
+    const isArmed = state.armed;
+    armedElement.textContent = isArmed ? '● ARMED' : '○ DISARMED';
+    armedElement.className = `armed-indicator ${isArmed ? 'armed' : 'disarmed'}`;
+  }
 
   const pm25 = sensors.pm25 || 0;
   const eco2 = sensors.eco2 || 0;
@@ -1050,16 +1055,19 @@ window.addEventListener('uav-data-update', function(e) {
     const t = d.telemetry;
     const liveDiv = document.getElementById('wp-live-progress');
     const liveInd = document.getElementById('wp-live-indicator');
+    const liveLbl = document.getElementById('wp-live-label');
+    const livePct = document.getElementById('wp-live-pct');
+    const liveBar = document.getElementById('wp-live-bar');
     if (t.is_holding) {
-      const pct = Math.round((t.hold_samples / t.hold_total) * 100);
-      liveDiv.style.display = '';
-      liveInd.style.display = '';
-      document.getElementById('wp-live-label').textContent = `Thu thập WP ${t.current_wp} — ${t.hold_samples}/${t.hold_total} mẫu`;
-      document.getElementById('wp-live-pct').textContent = pct + '%';
-      document.getElementById('wp-live-bar').style.width = pct + '%';
+      const pct = Math.round(((t.hold_samples || 0) / (t.hold_total || 10)) * 100);
+      if (liveDiv) liveDiv.style.display = '';
+      if (liveInd) liveInd.style.display = '';
+      if (liveLbl) liveLbl.textContent = `Thu thập WP ${t.current_wp || 1} — ${t.hold_samples || 0}/${t.hold_total || 10} mẫu`;
+      if (livePct) livePct.textContent = pct + '%';
+      if (liveBar) liveBar.style.width = pct + '%';
     } else {
-      liveDiv.style.display = 'none';
-      liveInd.style.display = 'none';
+      if (liveDiv) liveDiv.style.display = 'none';
+      if (liveInd) liveInd.style.display = 'none';
     }
   }).catch(_=>{});
 });

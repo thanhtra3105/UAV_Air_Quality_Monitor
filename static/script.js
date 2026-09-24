@@ -742,12 +742,19 @@ function removeWaypoint(idx) {
   renderWaypointList();
 }
 
-function clearAllWaypoints() {
+function clearLocalWaypointsOnly() {
   wpMarkers.forEach(m => map.removeLayer(m));
   waypoints.length = 0;
   wpMarkers.length = 0;
   updateRouteLine();
   renderWaypointList();
+}
+
+function clearAllWaypoints() {
+  if (!confirm("⚠️ XÁC NHẬN XÓA LỘ TRÌNH\n\nBạn có chắc chắn muốn xóa toàn bộ điểm đo trên bản đồ và hủy nhiệm vụ hiện tại?")) {
+    return;
+  }
+  clearLocalWaypointsOnly();
   fetch('/clear-mission', { method: 'POST' }).catch(() => {});
 }
 
@@ -773,11 +780,11 @@ async function uploadMissionToServer() {
     const res = await fetch('/upload-mission', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mission: missionPayload })
+      body: JSON.stringify({ mission: missionPayload, alt: configuredAltitude })
     });
     const d = await res.json();
     if (d.success) {
-      alert(`Đã nạp thành công ${waypoints.length} điểm đo vào hệ thống tự hành! Bấm 'Bắt đầu bay' để cất cánh hoặc tiếp tục hành trình.`);
+      alert(`Đã nạp thành công ${waypoints.length} điểm đo vào hệ thống tự hành (Độ cao bay: ${configuredAltitude}m)! Bấm 'Bắt đầu bay' để cất cánh hoặc tiếp tục hành trình.`);
     } else {
       alert("Lỗi: " + d.message);
     }
@@ -846,17 +853,22 @@ function renderAltitudeChart() {
   const plotW = Math.max(10, w - padLeft - padRight);
   const plotH = Math.max(10, h - padTop - padBottom);
 
-  // Thang đo trục Y cố định theo ảnh mẫu: 0m -> 35m (mỗi vạch 7m)
+  // Thang đo trục Y động theo độ cao cài đặt: tối thiểu 35m, tự động mở rộng nếu độ cao cài đặt lớn hơn
+  const targetAlt = (typeof configuredAltitude !== 'undefined') ? configuredAltitude : 35.0;
   const minY = 0.0;
-  const maxY = 35.0;
+  const maxY = Math.max(35.0, Math.ceil(targetAlt / 7.0) * 7.0);
 
   function toY(altVal) {
     const clamped = Math.max(minY, Math.min(maxY, altVal));
     return padTop + plotH - ((clamped - minY) / (maxY - minY)) * plotH;
   }
 
-  // 1. Vẽ các đường chia ngang & nhãn Y: 0m, 7m, 14m, 21m, 28m, 35m
-  const yTicks = [0, 7, 14, 21, 28, 35];
+  // 1. Vẽ các đường chia ngang & nhãn Y
+  const yTicks = [];
+  const yStep = maxY > 70 ? 14 : 7;
+  for (let y = 0; y <= maxY; y += yStep) {
+    yTicks.push(y);
+  }
   ctx.font = "9px 'JetBrains Mono', monospace";
   ctx.textAlign = "right";
   ctx.textBaseline = "middle";
@@ -931,8 +943,8 @@ function renderAltitudeChart() {
   ctx.stroke();
 
   // 4. Đường TARGET (Độ cao mục tiêu - nét đứt màu xanh dương #0284c7)
-  const targetAlt = 35.0; // 35m theo ảnh mẫu
-  const targetY = toY(targetAlt);
+  const targetAltVal = (typeof configuredAltitude !== 'undefined') ? configuredAltitude : 35.0;
+  const targetY = toY(targetAltVal);
   ctx.beginPath();
   ctx.setLineDash([5, 4]);
   ctx.strokeStyle = "#0284c7";
@@ -1000,9 +1012,68 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 });
 
+// ==================== CÀI ĐẶT ĐỘ CAO CẤT CÁNH & HÀNH TRÌNH ====================
+let configuredAltitude = 35.0;
+
+function setTakeoffAltitude(val) {
+  let num = parseFloat(val);
+  if (isNaN(num)) num = 35.0;
+  num = Math.max(5.0, Math.min(150.0, Math.round(num)));
+  configuredAltitude = num;
+
+  const input = document.getElementById('takeoff-alt-input');
+  if (input) input.value = configuredAltitude;
+
+  const display = document.getElementById('takeoff-alt-display');
+  if (display) display.textContent = configuredAltitude;
+
+  const legend = document.getElementById('legend-target-alt');
+  if (legend) legend.textContent = `${configuredAltitude}m`;
+
+  // Cập nhật trạng thái active cho các nút preset
+  document.querySelectorAll('.alt-preset-chip').forEach(chip => {
+    const chipAlt = parseFloat(chip.getAttribute('data-alt'));
+    if (chipAlt === configuredAltitude) {
+      chip.classList.add('active');
+    } else {
+      chip.classList.remove('active');
+    }
+  });
+
+  // Cập nhật lại độ cao của các waypoint hiện có nếu chưa bay
+  waypoints.forEach(w => {
+    w.alt = configuredAltitude;
+  });
+
+  // Vẽ lại đồ thị độ cao với đường mục tiêu mới
+  renderAltitudeChart();
+
+  // Gửi thiết lập độ cao lên máy chủ
+  fetch('/set-altitude', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ altitude: configuredAltitude })
+  }).catch(() => {});
+}
+
+function stepAltitude(delta) {
+  setTakeoffAltitude(configuredAltitude + delta);
+}
+
 async function startMission() {
+  if (!waypoints || waypoints.length === 0) {
+    alert("Chưa có điểm lộ trình nào! Vui lòng chọn ít nhất 1 điểm trên bản đồ và nhấn 'Nạp lộ trình' trước khi bắt đầu.");
+    return;
+  }
+  if (!confirm(`⚠️ XÁC NHẬN BẮT ĐẦU BAY\n\nBạn có chắc chắn muốn UAV bắt đầu bay thực hiện nhiệm vụ ở độ cao thiết lập (${configuredAltitude}m)?\n\nUAV sẽ cất cánh hoặc duy trì độ cao ${configuredAltitude}m trong suốt hành trình qua các waypoint.`)) {
+    return;
+  }
   try {
-    const res = await fetch('/start-mission', { method: 'POST' });
+    const res = await fetch('/start-mission', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ alt: configuredAltitude })
+    });
     const d = await res.json();
     if (!d.success) alert(d.message);
   } catch (e) {
@@ -1011,8 +1082,15 @@ async function startMission() {
 }
 
 async function triggerTakeoff() {
+  if (!confirm(`⚠️ XÁC NHẬN CẤT CÁNH\n\nBạn có chắc chắn muốn UAV cất cánh lên độ cao thiết lập (${configuredAltitude}m)?`)) {
+    return;
+  }
   try {
-    const res = await fetch('/takeoff', { method: 'POST' });
+    const res = await fetch('/takeoff', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ alt: configuredAltitude })
+    });
     const d = await res.json();
     if (!d.success && d.message) alert(d.message);
   } catch (e) {
@@ -1045,8 +1123,13 @@ async function disarmUAV() {
 }
 
 async function triggerRTL() {
+  if (!confirm("⚠️ XÁC NHẬN HẠ CÁNH (RTL)\n\nBạn có chắc chắn muốn kích hoạt hạ cánh an toàn / quay về điểm xuất phát?")) {
+    return;
+  }
   try {
-    await fetch('/rtl', { method: 'POST' });
+    const res = await fetch('/rtl', { method: 'POST' });
+    const d = await res.json();
+    if (!d.success && d.message) alert(d.message);
   } catch (e) {
     console.error(e);
   }
@@ -1057,7 +1140,7 @@ async function loadCurrentMission() {
     const res = await fetch('/get-mission');
     const d = await res.json();
     if (d.success && d.mission && d.mission.length > 0) {
-      clearAllWaypoints();
+      clearLocalWaypointsOnly();
       d.mission.forEach(w => addWaypoint(w.lat, w.lng || w.lon));
     }
   } catch (_) {}

@@ -1030,7 +1030,8 @@ def upload_mission():
             current_waypoints.append({
                 "lat": lat,
                 "lng": lon,
-                "lon": lon
+                "lon": lon,
+                "alt": CRUISE_ALTITUDE
             })
 
         current_waypoint_index = 0
@@ -1039,15 +1040,46 @@ def upload_mission():
         flight_state = "IDLE"
         current_mode = "GUIDED"
 
-    append_to_event_log(f"📤 Nạp {len(current_waypoints)} điểm đo vào hệ thống thành công!", "success")
-    return jsonify({"success": True, "message": f"Uploaded {len(current_waypoints)} waypoints (coordinates only)", "count": len(current_waypoints)})
+    append_to_event_log(f"📤 Nạp {len(current_waypoints)} điểm đo vào hệ thống thành công (Độ cao hành trình: {CRUISE_ALTITUDE}m)!", "success")
+    return jsonify({"success": True, "message": f"Uploaded {len(current_waypoints)} waypoints", "count": len(current_waypoints), "target_altitude": CRUISE_ALTITUDE})
+
+@app.route("/set-altitude", methods=["POST"])
+def set_altitude():
+    global CRUISE_ALTITUDE
+    data = request.get_json(silent=True) or {}
+    alt_val = data.get("altitude", data.get("alt"))
+    if alt_val is not None:
+        try:
+            val = float(alt_val)
+            val = max(5.0, min(150.0, val))
+            with data_lock:
+                CRUISE_ALTITUDE = val
+                for w in current_waypoints:
+                    w["alt"] = CRUISE_ALTITUDE
+            append_to_event_log(f"📐 Thiết lập độ cao cất cánh & hành trình: {CRUISE_ALTITUDE}m", "info")
+            return jsonify({"success": True, "target_altitude": CRUISE_ALTITUDE, "message": f"Đã thiết lập độ cao {CRUISE_ALTITUDE}m"})
+        except Exception as e:
+            return jsonify({"success": False, "message": str(e)}), 400
+    return jsonify({"success": False, "message": "Thiếu thông số altitude"}), 400
 
 @app.route("/start-mission", methods=["POST"])
 def start_mission():
-    global is_flying, is_holding, is_armed, current_mode, current_waypoint_index, flight_state
+    global is_flying, is_holding, is_armed, current_mode, current_waypoint_index, flight_state, CRUISE_ALTITUDE
 
     if not current_waypoints:
         return jsonify({"success": False, "message": "Chưa có danh sách waypoint!"}), 400
+
+    data = request.get_json(silent=True) or {}
+    if "alt" in data or "altitude" in data:
+        try:
+            val = float(data.get("alt", data.get("altitude")))
+            val = max(5.0, min(150.0, val))
+            with data_lock:
+                CRUISE_ALTITUDE = val
+                for w in current_waypoints:
+                    w["alt"] = CRUISE_ALTITUDE
+        except Exception:
+            pass
 
     with data_lock:
         is_armed = True
@@ -1055,32 +1087,44 @@ def start_mission():
         current_mode = "AUTO"
         current_waypoint_index = 0
 
-        # Nếu UAV đang ở mặt đất hoặc độ cao thấp (< 5m) -> Bật motor cất cánh lên 35m
+        # Nếu UAV đang ở mặt đất hoặc độ cao thấp (< 5m) -> Bật motor cất cánh lên CRUISE_ALTITUDE
         if current_position["alt"] < 5.0:
             current_position["alt"] = 0.0
             flight_state = "TAKEOFF"
             is_flying = False
-            append_to_event_log("🚀 Khởi động hành trình: UAV đã bật motor và bắt đầu cất cánh (TAKEOFF)...", "success")
+            append_to_event_log(f"🚀 Khởi động hành trình: UAV đã bật motor và cất cánh lên {CRUISE_ALTITUDE}m (TAKEOFF)...", "success")
         else:
-            # Nếu UAV đang ở trên không -> Bay thẳng tới waypoint mới #1
+            # Nếu UAV đang ở trên không -> Duy trì độ cao CRUISE_ALTITUDE và bay thẳng tới waypoint #1
             flight_state = "RUNNING"
             is_flying = True
             current_position["speed"] = 1.0
-            append_to_event_log("🚀 Tiếp tục hành trình mới: UAV đang ở độ cao hành trình, bắt đầu bay đến điểm đo #1...", "success")
+            append_to_event_log(f"🚀 Bắt đầu hành trình: UAV giữ độ cao {CRUISE_ALTITUDE}m và bay đến điểm đo #1...", "success")
 
-    return jsonify({"success": True, "message": "Mission started", "flight_state": flight_state})
+    return jsonify({"success": True, "message": "Mission started", "flight_state": flight_state, "target_altitude": CRUISE_ALTITUDE})
 
 @app.route("/takeoff", methods=["POST"])
 def takeoff():
-    global is_armed, is_flying, is_holding, current_mode, flight_state
+    global is_armed, is_flying, is_holding, current_mode, flight_state, CRUISE_ALTITUDE
+    data = request.get_json(silent=True) or {}
+    if "alt" in data or "altitude" in data:
+        try:
+            val = float(data.get("alt", data.get("altitude")))
+            val = max(5.0, min(150.0, val))
+            with data_lock:
+                CRUISE_ALTITUDE = val
+                for w in current_waypoints:
+                    w["alt"] = CRUISE_ALTITUDE
+        except Exception:
+            pass
+
     with data_lock:
         is_armed = True
         flight_state = "TAKEOFF"
         is_flying = False
         is_holding = False
         current_mode = "GUIDED"
-    append_to_event_log("🛫 Lệnh cất cánh: UAV đã kích hoạt động cơ và bắt đầu cất cánh lên độ cao hành trình 35m", "success")
-    return jsonify({"success": True, "message": "UAV đang cất cánh", "flight_state": flight_state})
+    append_to_event_log(f"🛫 Lệnh cất cánh: UAV đã kích hoạt động cơ và bắt đầu cất cánh lên độ cao {CRUISE_ALTITUDE}m", "success")
+    return jsonify({"success": True, "message": f"UAV đang cất cánh lên {CRUISE_ALTITUDE}m", "flight_state": flight_state, "target_altitude": CRUISE_ALTITUDE})
 
 @app.route("/save-current-waypoint", methods=["POST"])
 def save_current_waypoint():
