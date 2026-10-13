@@ -73,8 +73,8 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define USE_QMC5883
-//#define USE_IST8310
+//#define USE_QMC5883
+#define USE_IST8310
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -236,11 +236,11 @@ float kp_alt_pos = 1.0, ki_alt_pos = 0.0f, kd_alt_pos = 0.0f;	// Use DSP310
 float kp_alt_vel = 0.8, ki_alt_vel = 0.0f, kd_alt_vel = 0.003f;
 // ===== PID POSITION HOLD ====
 /*==== MTF01 ====*/
-//float kp_xy_pos = 1.2f, ki_xy_pos = 0.0f, kd_xy_pos = 0.0f; //
-//float kp_xy_vel = 6.0f, ki_xy_vel = 0.1f, kd_xy_vel = 0.05f; //
+float kp_xy_pos = 1.2f, ki_xy_pos = 0.0f, kd_xy_pos = 0.0f; //
+float kp_xy_vel = 6.0f, ki_xy_vel = 0.1f, kd_xy_vel = 0.05f; //
 /*===== GPS ====*/
-float kp_xy_pos = 0.8f, ki_xy_pos = 0.0f, kd_xy_pos = 0.0f; //
-float kp_xy_vel = 1.5f, ki_xy_vel = 0.0f, kd_xy_vel = 0.2f; //
+//float kp_xy_pos = 0.8f, ki_xy_pos = 0.0f, kd_xy_pos = 0.0f; //
+//float kp_xy_vel = 1.5f, ki_xy_vel = 0.0f, kd_xy_vel = 0.2f; //
 
 // ===== TARGET ROLL/PITCH MAX/MIN =======
 const float MAX_TARGET_ROLL_PITCH = 8.0;
@@ -564,7 +564,7 @@ void Estimate_Position_Kalman(float dt) {
 	/*=============================
 	 4. Kalman UPDATE (Dựa vào Optical Flow)
 	 =============================*/
-	if (mtf_data.flow_quality > 50 && mtf_data.distance >= 100) {
+	if (mtf_data.flow_quality > 50 && mtf_data.distance >= 100 && mtf01_updated) {
 		// Cập nhật KF bằng vận tốc đo được từ Flow
 		KalmanAxis_UpdateVel(&kf_x, flow_vx, OPTICAL_FLOW_R);
 		KalmanAxis_UpdateVel(&kf_y, flow_vy, OPTICAL_FLOW_R);
@@ -789,7 +789,7 @@ void Estimate_Position(float dt) {
 	est_y += est_vy * dt;
 }
 
-void positionHold(float dt) {		// MTF01
+void MTF_PositionHold(float dt) {		// MTF01
 	uint8_t pos_hold_sw = rxData.nut2;
 
 	if (pos_hold_sw && alt_hold) {
@@ -821,7 +821,7 @@ void positionHold(float dt) {		// MTF01
 
 		// 2. ĐẢO DẤU TẠI ĐÂY NẾU TRỤC BỊ NGƯỢC CHIỀU
 		// Chuyển dấu trừ từ target_pitch lên đây!
-		out_angle_earth_x = -out_angle_earth_x;
+//		out_angle_earth_x = -out_angle_earth_x;
 
 		// (Ghi chú: Nếu Roll của bạn cũng bị ngược thì thêm dấu trừ vào dòng dưới)
 		// out_angle_earth_y = -out_angle_earth_y;
@@ -1169,106 +1169,7 @@ void Mode_AutoLanding(float dt) {
 		landing_active = 0; // Có thể giữ hoặc reset tùy logic state machine của bạn
 	}
 }
-//void GPS_PositionHold(float dt) {		// PID
-//	uint8_t gps_hold_sw = rxData.nut2;
-//
-//	// Yêu cầu phải bật công tắc, có sóng GPS và đã chốt Home
-//	if (rxData.nut1 && gps_hold_sw && gps_home_set) {
-//		if (!pos_hold_active) {
-//			target_x = est_x; // Khóa vị trí hiện tại của Kalman
-//			target_y = est_y;
-//
-//			current_wp_index = 0;
-//
-//			// Kiểm tra xem có Mission nào trong RAM chưa
-//			if (Mission_IsReady() && Mission_GetCount() > 0) {
-//				mission_running = 1;
-//			} else {
-//				mission_running = 0;
-//			}
-//
-//			PID_Reset(&PID_Pos_X);
-//			PID_Reset(&PID_Pos_Y);
-//			PID_Reset(&PID_Vel_X);
-//			PID_Reset(&PID_Vel_Y);
-//			pos_hold_active = 1;
-//		}
-//
-//		if (mission_running) {
-//			Waypoint_t current_wp = Mission_GetWaypoint(current_wp_index);
-//
-//			// Quy đổi tọa độ Waypoint sang hệ mét (North/East) giống hệt hàm Kalman
-//			float wp_lat_err = (float) current_wp.lat - home_lat;
-//			float wp_lon_err = (float) current_wp.lon - home_lon;
-//
-//			float wp_target_x = wp_lat_err * 111320.0f;
-//			float wp_target_y = wp_lon_err * 111320.0f * cosf(home_lat * DEG_TO_RAD);
-//
-//			// Cập nhật mục tiêu cho PID Position
-//			target_x = wp_target_x;
-//			target_y = wp_target_y;
-//
-//			// Tính khoảng cách Euclid từ Drone đến Waypoint hiện tại
-//			float dx = target_x - est_x;
-//			float dy = target_y - est_y;
-//			float dist_to_wp = sqrtf(dx * dx + dy * dy);
-//
-//			// Nếu Drone đã bay lọt vào bán kính Waypoint
-//			if (dist_to_wp < WAYPOINT_RADIUS) {
-//				// Kiểm tra xem còn Waypoint nào tiếp theo không
-//				if (current_wp_index < Mission_GetCount() - 1) {
-//					current_wp_index++; // Chuyển mục tiêu sang điểm tiếp theo
-//				}
-//				// (Nếu là điểm cuối cùng, nó sẽ không tăng index, drone tự động Hover tại điểm cuối)
-//			}
-//		}
-//
-//		float err_x = target_x - est_x;
-//		float err_y = target_y - est_y;
-//
-//		target_vx = PID_Calculate(&PID_Pos_X, err_x, dt);
-//		target_vy = PID_Calculate(&PID_Pos_Y, err_y, dt);
-//		/* CONSTRAIN velocity 2m/s*/
-//		target_vx = constrain(target_vx, -5.0f, 5.0f);
-//		target_vy = constrain(target_vy, -5.0f, 5.0f);
-//
-//		// ==== VELOCITY X,Y LOOP=====
-//		float err_vx = target_vx - est_vx;
-//		float err_vy = target_vy - est_vy;
-//
-//		// 1. Tính toán lực đẩy cần thiết trên hệ tọa độ Trái Đất (X=North, Y=East)
-//		float out_angle_earth_x = PID_Calculate(&PID_Vel_X, err_vx, dt);
-//		float out_angle_earth_y = PID_Calculate(&PID_Vel_Y, err_vy, dt);
-//
-//		// 2. VÒNG ROTATION (Xoay từ Earth -> Body)
-//		float cy = cosf(yaw * DEG_TO_RAD);
-//		float sy = sinf(yaw * DEG_TO_RAD);
-//
-//		// Phân tách lực Earth thành lực kéo trên hệ Body (Front và Right)
-//		// Tuyệt đối không tự ý thêm dấu trừ vào các công thức lượng giác này
-//		float force_body_x = out_angle_earth_x * cy + out_angle_earth_y * sy;
-//		float force_body_y = -out_angle_earth_x * sy + out_angle_earth_y * cy;
-//
-//		// 3. Giới hạn góc nghiêng/lực tối đa
-//		force_body_x = constrain(force_body_x, -10.0f, 10.0f);
-//		force_body_y = constrain(force_body_y, -10.0f, 10.0f);
-//
-//		// 4. MAPPING TRỰC TIẾP LÊN TRỤC CỦA DRONE (Gắn dấu)
-//		// Theo hệ thống của bạn: Tiến = Pitch âm, Phải = Roll dương
-//		target_pitch = force_body_x;
-//		target_roll = force_body_y;
-//		txData.target_x = target_roll;
-//		txData.target_y = target_pitch;
-//	} else {
-//		if (pos_hold_active) {
-//			pos_hold_active = 0;
-//			mission_running = 0;
-////			gps_home_set = 0;
-//			// Bỏ PosHold, phi công giành lại quyền điều khiển stick
-//			// Để an toàn, có thể reset gps_home_set = 0 khi tắt
-//		}
-//	}
-//}
+
 
 void calculatePIDAngle(float dt_angle) {
 	/* ============ALTITUDE HOLD - CASCADE===========*/
@@ -1289,82 +1190,12 @@ void calculatePIDAngle(float dt_angle) {
 		target_vz = 0;
 		PID_Reset(&PID_Alt_Pos);
 	}
-//	if (alt_hold) {
-//		if (!alt_init) {
-//			alt_init = true;
-//			alt_state = ALT_STATE_IDLE; // Bắt đầu ở trạng thái chờ
-//			target_alt = kf_4d.altitude;
-//			PID_Reset(&PID_Alt_Pos);
-//			PID_Reset(&PID_Alt_Vel);
-//		}
-//
-//		// ---- STATE MACHINE QUẢN LÝ CẦN GA ----
-//		switch (alt_state) {
-//		case ALT_STATE_IDLE:
-//			target_alt = kf_4d.altitude; // Bám sát mốc mặt đất
-//
-//			// MẤU CHỐT: Liên tục dời điểm neo ngang theo GPS khi chưa cất cánh
-//			// để giữ err_x và err_y luôn bằng 0
-//			target_x = est_x;
-//			target_y = est_y;
-//
-//			// Đẩy ga qua mức Deadzone High (>1500) để kích hoạt Auto Takeoff
-//			if (throttle > DEADZONE_HIGH) {
-//				alt_state = ALT_STATE_TAKEOFF;
-//
-//				PID_Reset(&PID_Pos_X);
-//				PID_Reset(&PID_Pos_Y);
-//				PID_Reset(&PID_Vel_X);
-//				PID_Reset(&PID_Vel_Y);
-//			}
-//			break;
-//
-//		case ALT_STATE_TAKEOFF:
-//			target_alt += CLIMB_RATE * dt_angle;
-//			if (target_alt >= PILOT_TAKE_OFF_ALT) {
-//				target_alt = PILOT_TAKE_OFF_ALT;
-//				// Chờ đến khi drone đạt gần mốc 2m (sai số 20cm) thì khóa
-//				if (fabsf(target_alt - kf_4d.altitude) < 20.0f) {
-//					alt_state = ALT_STATE_HOLD;
-//				}
-//			}
-//			break;
-//
-//		case ALT_STATE_HOLD:
-//			// Người dùng đẩy ga lên cao -> Kéo target_alt lên
-//			if (throttle > DEADZONE_HIGH) {
-//				float rc_climb = (throttle - DEADZONE_HIGH) / 400.0f; // Tỉ lệ 0.0 - 1.0
-//				target_alt += (CLIMB_RATE * rc_climb) * dt_angle;
-//			}
-//			// Người dùng kéo ga xuống thấp -> Kéo target_alt xuống
-//			else if (throttle < DEADZONE_LOW && throttle > 1050) {
-//				float rc_descend = (DEADZONE_LOW - throttle) / 350.0f; // Tỉ lệ 0.0 - 1.0
-//				target_alt -= (DESCEND_RATE * rc_descend) * dt_angle;
-//			}
-//			// Kéo sát đáy -> Hủy Hold, cho phép đáp đất
-//			else if (throttle <= 1050) {
-//				alt_state = ALT_STATE_IDLE;
-//			}
-//			break;
-//		}
-//
-//		// Vòng lặp PID Outer (Chạy chung cho mọi trạng thái)
-//		float alt_err = target_alt - kf_4d.altitude;
-//		target_vz = PID_Calculate(&PID_Alt_Pos, alt_err, dt_angle);
-//		target_vz = constrain(target_vz, -MAX_TARGET_VZ, MAX_TARGET_VZ);
-//
-//	} else {
-//		alt_init = false;
-//		alt_state = ALT_STATE_IDLE;
-//		target_vz = 0;
-//		PID_Reset(&PID_Alt_Pos);
-//	}
 
 	//	========== OPTICAL FLOW MTF01 POS HOLD =============
-//	positionHold(dt_angle);
+//	MTF_positionHold(dt_angle);
 	//	========== GPS POS HOLD =============
-	GPS_PositionHold(dt_angle);
-
+//	GPS_PositionHold(dt_angle);
+	MTF_PositionHold(dt_angle);
 	//  ================= PID ANGLE =================
 	float pitch_err = target_pitch - pitch;
 	target_rate_pitch = PID_Calculate(&PID_Angle, pitch_err, dt_angle);
@@ -1692,7 +1523,7 @@ int main(void) {
 		readIMU();
 		calculateAngle(dt);
 //		Estimate_Position_GPS_Kalman(dt);
-		Estimate_Position(dt);
+		Estimate_Position_Kalman(dt);
 		PID_Task(dt);
 		mixer();
 		if (DWT_GetMicros() - ina219_timer > 500000) {

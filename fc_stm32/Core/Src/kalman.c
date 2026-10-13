@@ -130,42 +130,44 @@ void KalmanAxis_Predict(KalmanAxis_t *kf, float accel, float dt) {
 
 	float newP00 = P00 + dt * (P01 + P10) + dt * dt * P11;
 	float newP01 = P01 + dt * P11;
-	float newP10 = P10 + dt * P11;
+	float newP10 = newP01; 	// matran doi xung nen cho bang nhau luon
 	float newP11 = P11;
 
-	// Nhieu qua trinh don gian hoa (them truc tiep, du dung cho embedded thuc te)
-	newP00 += KF_Q_ACCEL * dt * dt * dt * 0.25f;
-	newP11 += KF_Q_ACCEL * dt;
+	newP00 += KF_Q_ACCEL * dt * dt * dt * dt * 0.25f;
+	newP01 += KF_Q_ACCEL * dt * dt * dt * 0.5f;
+	newP10 = newP01;
+	newP11 += KF_Q_ACCEL * dt * dt;
 
 	kf->P[0][0] = newP00;
 	kf->P[0][1] = newP01;
 	kf->P[1][0] = newP10;
 	kf->P[1][1] = newP11;
 }
-
 void KalmanAxis_UpdateVel(KalmanAxis_t *kf, float measured_vel, float R) {
-	// Residual (innovation)
-	float y = measured_vel - kf->vel;
-
-	// S = H*P*H^T + R = P11 + R
+	float P00 = kf->P[0][0];
+	float P01 = kf->P[0][1];
+	float P11 = kf->P[1][1];
+	// 1. Tinh Kalman Gain: K[Kp,Kv]
 	float S = kf->P[1][1] + R;
 	if (S < 1e-6f)
 		S = 1e-6f;
+	float Kp = kf->P[0][1] / S;
+	float Kv = kf->P[1][1] / S;
 
-	// Kalman gain K = P*H^T / S
-	float K0 = kf->P[0][1] / S;
-	float K1 = kf->P[1][1] / S;
+	//2. Cap nhat ma tran voi do luong:
+	float innovation = measured_vel - kf->vel;
+	kf->pos += Kp * innovation;
+	kf->vel += Kv * innovation;
 
-	kf->pos += K0 * y;
-	kf->vel += K1 * y;
+	//3. Update ma tran hiep phuong sai (covariance)
+	float newP00 = P00 - Kp * P01;
+	float newP01 = P01 - Kp * P11;
+	float newP11 = P11 - Kv * P11;
 
-	float P00 = kf->P[0][0], P01 = kf->P[0][1];
-	float P10 = kf->P[1][0], P11 = kf->P[1][1];
-
-	kf->P[0][0] = P00 - K0 * P10;
-	kf->P[0][1] = P01 - K0 * P11;
-	kf->P[1][0] = P10 - K1 * P10;
-	kf->P[1][1] = P11 - K1 * P11;
+	kf->P[0][0] = newP00;
+	kf->P[0][1] = newP01;
+	kf->P[1][0] = newP01;
+	kf->P[1][1] = newP11;
 }
 
 void KalmanAxis_UpdatePos(KalmanAxis_t *kf, float pos_meas, float R) {
