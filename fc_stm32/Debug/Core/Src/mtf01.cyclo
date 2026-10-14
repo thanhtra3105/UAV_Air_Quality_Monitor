@@ -3,4 +3,5 @@
 ../Core/Src/mtf01.c:96:6:MTF01_Init	1
 ../Core/Src/mtf01.c:103:6:MTF01_UART_RxEventCallback	4
 ../Core/Src/mtf01.c:117:9:MTF01_Update	7
-../Core/Src/mtf01.c:155:6:MTF01_UART_ErrorCallback	2
+../Core/Src/mtf01.c:155:7:MTF01_Median3	4
+../Core/Src/mtf01.c:187:6:MTF01_UART_ErrorCallback	2

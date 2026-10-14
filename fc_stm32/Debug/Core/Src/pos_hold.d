@@ -1,5 +1,5 @@
 Core/Src/pos_hold.o: ../Core/Src/pos_hold.c ../Core/Inc/pos_hold.h \
- ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal.h \
+ ../Core/Inc/main.h ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal.h \
  ../Core/Inc/stm32h5xx_hal_conf.h \
  ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal_rcc.h \
  ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal_def.h \
@@ -31,8 +31,14 @@ Core/Src/pos_hold.o: ../Core/Src/pos_hold.c ../Core/Inc/pos_hold.h \
  ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal_tim_ex.h \
  ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal_uart.h \
  ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal_uart_ex.h \
- ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal_exti.h
+ ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal_exti.h \
+ ../Core/Inc/types.h ../Core/Inc/kalman.h ../Core/Inc/kalman_gps.h \
+ ../Core/Inc/mtf01.h ../Core/Inc/gps.h ../Core/Inc/mission.h \
+ ../Core/Inc/flight_control.h ../Core/Inc/pid_controller.h \
+ ../Core/Inc/icm20602.h ../Core/Inc/dsp310.h ../Core/Inc/ist8310.h \
+ ../Core/Inc/qmc5883.h
 ../Core/Inc/pos_hold.h:
+../Core/Inc/main.h:
 ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal.h:
 ../Core/Inc/stm32h5xx_hal_conf.h:
 ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal_rcc.h:
@@ -66,3 +72,15 @@ Core/Src/pos_hold.o: ../Core/Src/pos_hold.c ../Core/Inc/pos_hold.h \
 ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal_uart.h:
 ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal_uart_ex.h:
 ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal_exti.h:
+../Core/Inc/types.h:
+../Core/Inc/kalman.h:
+../Core/Inc/kalman_gps.h:
+../Core/Inc/mtf01.h:
+../Core/Inc/gps.h:
+../Core/Inc/mission.h:
+../Core/Inc/flight_control.h:
+../Core/Inc/pid_controller.h:
+../Core/Inc/icm20602.h:
+../Core/Inc/dsp310.h:
+../Core/Inc/ist8310.h:
+../Core/Inc/qmc5883.h:

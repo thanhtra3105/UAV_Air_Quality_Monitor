@@ -16,8 +16,8 @@ extern float KalmanAnglePitch;
 extern float KalmanUncertaintyAnglePitch;
 extern float Kalman1DOutput[];  // [0]: Góc, [1]: Sai số
 /* Nhieu qua trinh / do cua Kalman filter - TUNE theo thuc te bay */
-static const float KF_Q_ACCEL = 0.35f;   // do "tin" gia toc IMU (nhieu qua trinh tren accel, don vi (m/s^2)^2 * s ap dung don gian)
-static const float KF_R_BASE  = 0.05f;   // nhieu do co ban cua van toc do tu optical flow (m/s)^2, quality=255
+static const float KF_Q_ACCEL = 0.35f; // do "tin" gia toc IMU (nhieu qua trinh tren accel, don vi (m/s^2)^2 * s ap dung don gian)
+static const float KF_R_BASE = 0.05f; // nhieu do co ban cua van toc do tu optical flow (m/s)^2, quality=255
 
 typedef struct {
 	float altitude;      // Trạng thái S[0]: Cao độ ước lượng
@@ -27,18 +27,21 @@ typedef struct {
 
 // kalman.h — thêm struct mới
 typedef struct {
-    float altitude;
-    float velocity;
-    float baro_bias;   // trôi chậm của baro, ước lượng riêng
-    float P[3][3];
+	float altitude;
+	float velocity;
+	float baro_bias;   // trôi chậm của baro, ước lượng riêng
+	float P[3][3];
 } Kalman3D_t;
 
 typedef struct {
-    float altitude;		// cm
-    float velocity;		// cm/s
-    float acc_bias;
-    float baro_bias;
-    float P[4][4];
+	float altitude;		// cm
+	float velocity;		// cm/s
+	float acc_bias;
+	float baro_bias;
+	float terrain_offset;	// cm — độ cao mặt đất cục bộ so với gốc altitude
+							// (dương nếu mặt đất/bụi cỏ nhô cao hơn điểm gốc)
+	float P[5][5];			// Giữ tên Kalman4D_t để không phá vỡ code khác
+							// đang tham chiếu kiểu này, dù nay là 5-state
 } Kalman4D_t;
 
 typedef struct {
@@ -72,6 +75,17 @@ void Kalman3D_Update(Kalman3D_t *kf, float alt_measured, float sigma_alt);
 
 void Kalman4D_Init(Kalman4D_t *kf, float initial_alt);
 void Kalman4D_Predict(Kalman4D_t *kf, float acc_z, float dt);
-void Kalman4D_Update(Kalman4D_t *kf, float alt_measured, float sigma_alt);
+void Kalman4D_UpdateMeasure(Kalman4D_t *kf, float alt_measured, float sigma_alt,
+		float H[4]);
 
+void Kalman4D_UpdateRange(Kalman4D_t *kf, float range_alt_cm, float acc_z);
+void Kalman4D_UpdateBaro(Kalman4D_t *kf, float baro_alt_cm);
+
+void Kalman4D_UpdateHeight(Kalman4D_t *kf, float baro_alt_cm, float range_cm,
+		float roll_deg, float pitch_deg, float acc_z_cm_s2, float dt,
+		uint8_t baro_valid, uint8_t range_valid);
+
+float Kalman4D_getSigmaRange(float range_alt_cm, float current_estimated_alt_cm,
+		float acc_z);
+float Kalman4D_getSigmaBaro(float current_estimated_alt_cm);
 #endif /* INC_KALMAN_H_ */

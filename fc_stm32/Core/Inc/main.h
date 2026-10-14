@@ -69,8 +69,12 @@ void Error_Handler(void);
 #define CSN_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */
+#ifndef RAD_TO_DEG
 #define RAD_TO_DEG 57.2958f
+#endif
+#ifndef DEG_TO_RAD
 #define DEG_TO_RAD 0.017453f
+#endif
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus

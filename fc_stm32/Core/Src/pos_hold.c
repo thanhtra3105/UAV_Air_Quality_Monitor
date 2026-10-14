@@ -1,199 +1,486 @@
-///*
-// * pos_hold.c
-// *
-// * Created on: Jul 4, 2026
-// * Author: lethanhtra
-// */
-//
-//#include "pos_hold.h"
-//#include <math.h>
-//#include <string.h>
-//
-//#define DEG2RAD(x) ((x) * 0.0174532925f)
-//#define GRAVITY    9.80665f
-//
-///* ================================================================
-// *  PID GAINS - CAN TUNE THEO KHUNG DRONE CUA BAN
-// *  Goi y ban dau (tham khao, KHONG phai gia tri cuoi cung):
-// *    - Position PID: chi can P (I=0, D=0) vi output la van toc setpoint,
-// *      ban than vong velocity da co tinh chat giam soc.
-// *    - Velocity PID: P chiem chinh, mot chut D de giam overshoot,
-// *      I nho de triet tieu drift do gio/lech tam.
-// * ================================================================ */
-//static const float POS_KP  = 0.6f;    // (m/s) / m       -> vi tri sai 1m -> muon van toc 0.6 m/s ve target
-//static const float VEL_KP  = 0.12f;   // rad / (m/s)     -> van toc sai 1 m/s -> nghieng ~0.12 rad (~7 do)
-//static const float VEL_KI  = 0.02f;
-//static const float VEL_KD  = 0.01f;
-//
-//
-///* ================================================================
-// *                          POS HOLD API
-// * ================================================================ */
-//void PosHold_Init(PosHold_t *ph)
-//{
-//    memset(ph, 0, sizeof(PosHold_t));
-//
-//    KalmanAxis_Init(&ph->kf_x);
-//    KalmanAxis_Init(&ph->kf_y);
-//
-//    float max_tilt_rad = DEG2RAD(POS_HOLD_MAX_TILT_DEG);
-//
-//    // Position PID: output la van toc setpoint (m/s), gioi han vd +-2 m/s
-//    PID_Init(&ph->pid_pos_x, POS_KP, 0.0f, 0.0f, 0.2f);
-//    PID_Init(&ph->pid_pos_y, POS_KP, 0.0f, 0.0f, 0.22);
-//
-//    // Velocity PID: output la goc nghieng setpoint (rad), gioi han theo MAX_TILT
-//    PID_Init(&ph->pid_vel_x, VEL_KP, VEL_KI, VEL_KD, 0.2f);
-//    PID_Init(&ph->pid_vel_y, VEL_KP, VEL_KI, VEL_KD, 0.2f);
-//
-//    ph->state = POS_HOLD_DISABLED;
-//    ph->is_reliable = 0;
-//}
-//
-//void PosHold_Enable(PosHold_t *ph)
-//{
-//    // Reset KF ve 0 -> vi tri hien tai duoc coi la goc toa do (0,0)
-//    KalmanAxis_Init(&ph->kf_x);
-//    KalmanAxis_Init(&ph->kf_y);
-//
-//    PID_Reset(&ph->pid_pos_x);
-//    PID_Reset(&ph->pid_pos_y);
-//    PID_Reset(&ph->pid_vel_x);
-//    PID_Reset(&ph->pid_vel_y);
-//
-//    ph->target_x = 0.0f;
-//    ph->target_y = 0.0f;
-//
-//    ph->roll_sp = 0.0f;
-//    ph->pitch_sp = 0.0f;
-//
-//    ph->low_quality_ms = 0;
-//    ph->is_reliable = 1;
-//
-//    ph->state = POS_HOLD_ENABLED;
-//}
-//
-//void PosHold_Disable(PosHold_t *ph)
-//{
-//    ph->state = POS_HOLD_DISABLED;
-//    ph->roll_sp = 0.0f;
-//    ph->pitch_sp = 0.0f;
-//
-//    PID_Reset(&ph->pid_pos_x);
-//    PID_Reset(&ph->pid_pos_y);
-//    PID_Reset(&ph->pid_vel_x);
-//    PID_Reset(&ph->pid_vel_y);
-//}
-//
-//void PosHold_Update(PosHold_t *ph, MTF01_t *mtf,
-//                    float roll, float pitch, float yaw,
-//                    float gyro_p, float gyro_q,
-//                    float accel_x_body, float accel_y_body,
-//                    float dt)
-//{
-//    if (dt <= 0.0f) dt = 0.001f;
-//
-//    float h = mtf->distance * 0.001f;   // mm -> m, giong cach mtf01.c dang tinh
-//
-//    uint8_t flow_valid = (mtf->quality > MTF01_QUALITY_MIN)
-//                       && (h > MTF01_HEIGHT_MIN)
-//                       && (h < MTF01_HEIGHT_MAX);
-//
-//    /* -------------------------------------------------------------
-//     * 1) Bu anh huong xoay (rotation-induced flow)
-//     *    LUU Y VE TRUC: chieu gan cam bien anh huong truc nao khop
-//     *    voi truc goc quay nao (roll/pitch) phai duoc KIEM TRA THUC TE
-//     *    (VD: dat drone tren gia, giu vi tri co dinh, xoay tay quanh
-//     *    truc roll/pitch, xem vx/vy nhay ra sao) roi chinh lai neu can.
-//     *    Cong thuc: v_true = v_do - gyro_rate * h
-//     * ----------------------------------------------------------- */
-//    float vx_body = mtf->vx - gyro_q * h;   // gia dinh: flow_x <-> pitch rate (gyro_q)
-//    float vy_body = mtf->vy - gyro_p * h;   // gia dinh: flow_y <-> roll  rate (gyro_p)
-//
-//    /* -------------------------------------------------------------
-//     * 2) Xoay tu body frame sang world frame (theo yaw)
-//     *    Xap xi goc nho: bo qua anh huong cua roll/pitch len phep chieu
-//     *    (dung cho hover, nghieng nho <15 do). Neu bay nghieng nhieu,
-//     *    can ma tran xoay 3D day du.
-//     * ----------------------------------------------------------- */
-//    float cy = cosf(yaw), sy = sinf(yaw);
-//    float v_world_x = vx_body * cy - vy_body * sy;   // "North" tuong doi
-//    float v_world_y = vx_body * sy + vy_body * cy;   // "East"  tuong doi
-//
-//    float ax_world = accel_x_body * cy - accel_y_body * sy;
-//    float ay_world = accel_x_body * sy + accel_y_body * cy;
-//
-//    /* -------------------------------------------------------------
-//     * 3) Kalman filter predict (luon chay, du flow co hop le hay khong)
-//     * ----------------------------------------------------------- */
-//    KalmanAxis_Predict(&ph->kf_x, ax_world, dt);
-//    KalmanAxis_Predict(&ph->kf_y, ay_world, dt);
-//
-//    /* -------------------------------------------------------------
-//     * 4) Kalman filter update (chi khi flow dang tin cay)
-//     *    R giam khi quality cao -> tin tuong phep do hon
-//     * ----------------------------------------------------------- */
-//    if (flow_valid) {
-//        float quality_norm = (float)mtf->quality / 255.0f;
-//        if (quality_norm < 0.1f) quality_norm = 0.1f;
-//        float R = KF_R_BASE / quality_norm;
-//
-//        KalmanAxis_UpdateVel(&ph->kf_x, v_world_x, R);
-//        KalmanAxis_UpdateVel(&ph->kf_y, v_world_y, R);
-//
-//        ph->low_quality_ms = 0;
-//        ph->is_reliable = 1;
-//    } else {
-//        ph->low_quality_ms += (uint32_t)(dt * 1000.0f);
-//        if (ph->low_quality_ms > POS_HOLD_LOWQ_TIMEOUT_MS) {
-//            ph->is_reliable = 0;   // mat flow qua lau -> khong nen dua vao pos_hold nua
-//        }
-//    }
-//
-//    /* -------------------------------------------------------------
-//     * 5) Vong dieu khien cascade (chi chay khi da bat va con tin cay)
-//     * ----------------------------------------------------------- */
-//    if (ph->state == POS_HOLD_ENABLED && ph->is_reliable) {
-//
-//        float pos_err_x = ph->target_x - ph->kf_x.pos;
-//        float pos_err_y = ph->target_y - ph->kf_y.pos;
-//
-//        float vel_sp_x = PID_Calculate(&ph->pid_pos_x, pos_err_x, dt);
-//        float vel_sp_y = PID_Calculate(&ph->pid_pos_y, pos_err_y, dt);
-//
-//        float vel_err_x = vel_sp_x - ph->kf_x.vel;
-//        float vel_err_y = vel_sp_y - ph->kf_y.vel;
-//
-//        // Output truc tiep la goc nghieng world-frame (rad)
-//        float tilt_world_x = PID_Calculate(&ph->pid_vel_x, vel_err_x, dt);
-//        float tilt_world_y = PID_Calculate(&ph->pid_vel_y, vel_err_y, dt);
-//
-//        /* -------------------------------------------------------------
-//         * 6) Xoay nguoc lai (theo -yaw) tu world frame ve body frame
-//         *    de ra lenh roll/pitch setpoint dung theo huong mui drone
-//         *
-//         *    QUY UOC DAU: pitch am (nose-down) thuong tao ra gia toc
-//         *    tien ve phia truoc; roll duong thuong nghieng sang phai.
-//         *    Kiem tra lai dau (+/-) cho khop voi attitude controller
-//         *    hien co cua ban truoc khi bay thu (bay tay giu do cao,
-//         *    quan sat chieu nghieng khi bat pos_hold).
-//         * ----------------------------------------------------------- */
-//        float tilt_body_x =  tilt_world_x * cy + tilt_world_y * sy;
-//        float tilt_body_y = -tilt_world_x * sy + tilt_world_y * cy;
-//
-//        ph->pitch_sp = -tilt_body_x;   // TODO: verify dau (sign) thuc te
-//        ph->roll_sp  =  tilt_body_y;   // TODO: verify dau (sign) thuc te
-//
-//    } else {
-//        ph->roll_sp = 0.0f;
-//        ph->pitch_sp = 0.0f;
-//    }
-//
-//    (void)roll;
-//    (void)pitch;
-//}
-
+/*
+ * pos_hold.c
+ *
+ *  Created on: Oct 13, 2026
+ *      Author: lethanhtra
+ */
 
 #include "pos_hold.h"
+#include "flight_control.h"
 #include <math.h>
+#include <stdlib.h>
 #include <string.h>
+
+/* ================= EXTERNAL SENSORS & CONTROLS ================= */
+extern MTF01_t mtf_data;
+extern uint8_t mtf01_updated;
+extern GPS_Data_t gps;
+
+/* ================= STATE & ESTIMATION VARIABLES ================= */
+float ax_earth = 0.0f;
+float ay_earth = 0.0f;
+float ax_bias = 0.0f;
+float ay_bias = 0.0f;
+
+float est_vx = 0.0f;
+float est_vy = 0.0f;
+float est_x = 0.0f;
+float est_y = 0.0f;
+
+float target_x = 0.0f;
+float target_y = 0.0f;
+float target_vx = 0.0f;
+float target_vy = 0.0f;
+
+uint8_t pos_hold_active = 0;
+
+KalmanAxis_t kf_x;
+KalmanAxis_t kf_y;
+
+double home_lat = 0.0f;
+double home_lon = 0.0f;
+uint8_t gps_home_set = 0;
+
+KalmanFilter1D_t kf_North; // X Axis (North)
+KalmanFilter1D_t kf_East;  // Y Axis (East)
+
+uint16_t current_wp_index = 0;
+uint8_t mission_running = 0;
+float lat_err = 0.0f, lon_err = 0.0f;
+float pos_N = 0.0f, pos_E = 0.0f;
+
+uint8_t takeoff_active = 0;
+uint8_t takeoff_complete = 0;
+uint8_t landing_active = 0;
+uint8_t landing_complete = 0;
+
+float target_pitch_body = 0.0f;
+float target_roll_body = 0.0f;
+
+/* ================= INITIALIZATION ================= */
+void PosHold_Init(void) {
+	KalmanAxis_Init(&kf_x);
+	KalmanAxis_Init(&kf_y);
+	KalmanGPS_Init(&kf_North, 0.0f, 0.0f, 0.1f, 0.001f);
+	KalmanGPS_Init(&kf_East, 0.0f, 0.0f, 0.1f, 0.001f);
+}
+
+/* ================= MTF-01 OPTICAL FLOW ESTIMATION (KALMAN) ================= */
+void Estimate_Position_Kalman(float dt_val) {
+	/* 1. Rotation Body -> Earth */
+	float cy = cosf(yaw * DEG_TO_RAD);
+	float sy = sinf(yaw * DEG_TO_RAD);
+	float cp = cosf(pitch * DEG_TO_RAD);
+	float sp = sinf(pitch * DEG_TO_RAD);
+	float cr = cosf(roll * DEG_TO_RAD);
+	float sr = sinf(roll * DEG_TO_RAD);
+
+	ax_earth = cy * cp * ax + (cy * sp * sr - sy * cr) * ay
+			+ (cy * sp * cr + sy * sr) * az;
+
+	ay_earth = sy * cp * ax + (sy * sp * sr + cy * cr) * ay
+			+ (sy * sp * cr - cy * sr) * az;
+
+	ax_earth *= 9.81f;
+	ay_earth *= 9.81f;
+
+	/* 2. Optical Flow -> Earth */
+	float body_vx = -mtf_data.vy; // Tiến/Lùi
+	float body_vy = mtf_data.vx;  // Trái/Phải
+
+	float flow_vx = body_vx * cy - body_vy * sy;
+	float flow_vy = body_vx * sy + body_vy * cy;
+
+	/* 3. Kalman PREDICT (Dựa vào IMU) */
+//	float ax_input = ax_earth - ax_bias;
+//	float ay_input = ay_earth - ay_bias;
+	KalmanAxis_Predict(&kf_x, ax_earth, dt_val);
+	KalmanAxis_Predict(&kf_y, ay_earth, dt_val);
+
+	/* 4. Kalman UPDATE (Dựa vào Optical Flow) */
+	if (mtf01_updated) {
+		if (mtf_data.flow_quality > 60 && mtf_data.distance >= 100) {
+			float err_vx = flow_vx - kf_x.vel;
+			float err_vy = flow_vy - kf_y.vel;
+			ax_bias += KI_FLOW * err_vx * dt_val;
+			ay_bias += KI_FLOW * err_vy * dt_val;
+			KalmanAxis_UpdateVel(&kf_x, flow_vx, 0.05);
+			KalmanAxis_UpdateVel(&kf_y, flow_vy, 0.05);
+		}
+	}
+
+	/* 5. Cập nhật biến State cho Position Hold */
+	est_x = kf_x.pos;
+	est_vx = kf_x.vel;
+
+	est_y = kf_y.pos;
+	est_vy = kf_y.vel;
+}
+
+/* ================= MTF-01 ESTIMATION (LEGACY LPF) ================= */
+void Estimate_Position(float dt_val) {
+	float cy = cosf(yaw * DEG_TO_RAD);
+	float sy = sinf(yaw * DEG_TO_RAD);
+	float cp = cosf(pitch * DEG_TO_RAD);
+	float sp = sinf(pitch * DEG_TO_RAD);
+	float cr = cosf(roll * DEG_TO_RAD);
+	float sr = sinf(roll * DEG_TO_RAD);
+
+	ax_earth = cy * cp * ax + (cy * sp * sr - sy * cr) * ay
+			+ (cy * sp * cr + sy * sr) * az;
+
+	ay_earth = sy * cp * ax + (sy * sp * sr + cy * cr) * ay
+			+ (sy * sp * cr - cy * sr) * az;
+
+	ax_earth *= 9.81f;
+	ay_earth *= 9.81f;
+
+	float body_vx = -mtf_data.vy;
+	float body_vy = mtf_data.vx;
+
+	float flow_vx = body_vx * cy - body_vy * sy;
+	float flow_vy = body_vx * sy + body_vy * cy;
+
+	static float flow_vx_lp = 0.0f;
+	static float flow_vy_lp = 0.0f;
+
+	flow_vx_lp += FLOW_ALPHA * (flow_vx - flow_vx_lp);
+	flow_vy_lp += FLOW_ALPHA * (flow_vy - flow_vy_lp);
+
+	float ax_correct = ax_earth - ax_bias;
+	float ay_correct = ay_earth - ay_bias;
+
+	est_vx += ax_correct * dt_val;
+	est_vy += ay_correct * dt_val;
+
+	if (mtf_data.flow_quality > 50 && mtf_data.distance >= 100) {
+		float err_vx = flow_vx_lp - est_vx;
+		float err_vy = flow_vy_lp - est_vy;
+
+		ax_bias += KI_FLOW * err_vx * dt_val;
+		ay_bias += KI_FLOW * err_vy * dt_val;
+
+		est_vx += KP_FLOW * err_vx;
+		est_vy += KP_FLOW * err_vy;
+	}
+
+	est_x += est_vx * dt_val;
+	est_y += est_vy * dt_val;
+}
+float out_angle_earth_x = 0;
+float out_angle_earth_y = 0;
+/* ================= MTF-01 POSITION HOLD ================= */
+void MTF_PositionHold(float dt_val) {
+	uint8_t pos_hold_sw = rxData.nut2;
+
+	if (pos_hold_sw && alt_hold) {
+		if (!pos_hold_active) {
+			target_x = est_x;
+			target_y = est_y;
+			PID_Reset(&PID_Pos_X);
+			PID_Reset(&PID_Pos_Y);
+			PID_Reset(&PID_Vel_X);
+			PID_Reset(&PID_Vel_Y);
+			pos_hold_active = 1;
+		}
+
+		// POSITION LOOP
+		float err_x = target_x - est_x;
+		float err_y = target_y - est_y;
+		if (fabsf(err_x) < 0.01f)
+			err_x = 0.0f;
+		if (fabsf(err_y) < 0.01f)
+			err_y = 0.0f;
+
+		target_vx = PID_Calculate(&PID_Pos_X, err_x, dt_val);
+		target_vy = PID_Calculate(&PID_Pos_Y, err_y, dt_val);
+
+		target_vx = constrain(target_vx, -MAX_TARGET_VEL_XY, MAX_TARGET_VEL_XY);
+		target_vy = constrain(target_vy, -MAX_TARGET_VEL_XY, MAX_TARGET_VEL_XY);
+
+		// VELOCITY LOOP
+		float err_vx = target_vx - est_vx;
+		float err_vy = target_vy - est_vy;
+		if (fabsf(err_vx) < 0.01f)
+			err_vx = 0.0f;
+		if (fabsf(err_vy) < 0.01f)
+			err_vy = 0.0f;
+
+		out_angle_earth_x = PID_Calculate(&PID_Vel_X, err_vx, dt_val);
+		out_angle_earth_y = PID_Calculate(&PID_Vel_Y, err_vy, dt_val);
+
+		// ROTATION Earth -> Body
+		float cy = cosf(yaw * DEG_TO_RAD);
+		float sy = sinf(yaw * DEG_TO_RAD);
+
+		target_pitch_body = out_angle_earth_x * cy + out_angle_earth_y * sy;
+		target_roll_body = -out_angle_earth_x * sy + out_angle_earth_y * cy;
+
+		target_pitch_body = constrain(target_pitch_body, -15.0f, 15.0f);
+		target_roll_body = constrain(target_roll_body, -15.0f, 15.0f);
+
+		target_pitch = target_pitch_body;
+		target_roll = target_roll_body;
+	} else {
+		if (pos_hold_active) {
+			pos_hold_active = 0;
+		}
+		PID_Reset(&PID_Pos_X);
+		PID_Reset(&PID_Pos_Y);
+		PID_Reset(&PID_Vel_X);
+		PID_Reset(&PID_Vel_Y);
+	}
+}
+
+/* ================= GPS ESTIMATION (KALMAN) ================= */
+void Estimate_Position_GPS_Kalman(float dt_val) {
+	float ax_frd = ax;
+	float ay_frd = -ay;
+	float az_frd = -az;
+
+	float cy = cosf(yaw * DEG_TO_RAD);
+	float sy = sinf(yaw * DEG_TO_RAD);
+	float cp = cosf(pitch * DEG_TO_RAD);
+	float sp = sinf(pitch * DEG_TO_RAD);
+	float cr = cosf(roll * DEG_TO_RAD);
+	float sr = sinf(roll * DEG_TO_RAD);
+
+	ax_earth = cy * cp * ax_frd + (-cy * sp * sr - sy * cr) * ay_frd
+			+ (-cy * sp * cr + sy * sr) * az_frd;
+
+	ay_earth = sy * cp * ax_frd + (-sy * sp * sr + cy * cr) * ay_frd
+			+ (-sy * sp * cr - cy * sr) * az_frd;
+
+	ax_earth *= 9.81f;
+	ay_earth *= 9.81f;
+
+	KalmanGPS_Predict(&kf_North, ax_earth, dt_val);
+	KalmanGPS_Predict(&kf_East, ay_earth, dt_val);
+
+	if (gps.fixType >= 3 && gps.ready == 1) {
+		if (!gps_home_set) {
+			home_lat = gps.latitude;
+			home_lon = gps.longitude;
+			gps_home_set = 1;
+
+			kf_North.pos = 0.0f;
+			kf_North.vel = 0.0f;
+			kf_North.bias = 0.0f;
+			kf_East.pos = 0.0f;
+			kf_East.vel = 0.0f;
+			kf_East.bias = 0.0f;
+		} else {
+			lat_err = (float) gps.latitude - home_lat;
+			lon_err = (float) gps.longitude - home_lon;
+
+			pos_N = lat_err * 111320.0f;
+			pos_E = lon_err * 111320.0f * cosf(home_lat * DEG_TO_RAD);
+
+			float vel_N = (float) gps.velN / 1000.0f;
+			float vel_E = (float) gps.velE / 1000.0f;
+
+			float r_pos_noise = (float) (gps.hAcc / 1000.0f)
+					* (gps.hAcc / 1000.0f);
+			float r_vel_noise = (float) (gps.sAcc / 1000.0f)
+					* (gps.sAcc / 1000.0f);
+
+			KalmanGPS_Update(&kf_North, pos_N, vel_N, r_pos_noise, r_vel_noise);
+			KalmanGPS_Update(&kf_East, pos_E, vel_E, r_pos_noise, r_vel_noise);
+		}
+		gps.ready = 0;
+	}
+
+	est_x = kf_North.pos;
+	est_vx = kf_North.vel;
+	est_y = kf_East.pos;
+	est_vy = kf_East.vel;
+}
+
+/* ================= SHARED CARROT CHASING XY CONTROLLER ================= */
+void Run_XY_Controller(float dt_val) {
+	float err_x = target_x - est_x;
+	float err_y = target_y - est_y;
+
+	target_vx = PID_Calculate(&PID_Pos_X, err_x, dt_val);
+	target_vy = PID_Calculate(&PID_Pos_Y, err_y, dt_val);
+
+	target_vx = constrain(target_vx, -MAX_NAV_SPEED - 1.0f,
+	MAX_NAV_SPEED + 1.0f);
+	target_vy = constrain(target_vy, -MAX_NAV_SPEED - 1.0f,
+	MAX_NAV_SPEED + 1.0f);
+
+	float err_vx = target_vx - est_vx;
+	float err_vy = target_vy - est_vy;
+
+	float out_angle_earth_x = PID_Calculate(&PID_Vel_X, err_vx, dt_val);
+	float out_angle_earth_y = PID_Calculate(&PID_Vel_Y, err_vy, dt_val);
+
+	float cy = cosf(yaw * DEG_TO_RAD);
+	float sy = sinf(yaw * DEG_TO_RAD);
+
+	float force_body_x = out_angle_earth_x * cy + out_angle_earth_y * sy;
+	float force_body_y = -out_angle_earth_x * sy + out_angle_earth_y * cy;
+
+	force_body_x = constrain(force_body_x, -20.0f, 20.0f);
+	force_body_y = constrain(force_body_y, -20.0f, 20.0f);
+
+	target_pitch = force_body_x;
+	target_roll = force_body_y;
+}
+
+/* ================= GPS WAYPOINT POSITION HOLD ================= */
+void GPS_PositionHold(float dt_val) {
+	uint8_t gps_hold_sw = rxData.nut2;
+
+	if (rxData.nut1 && gps_hold_sw && gps_home_set) {
+		if (!pos_hold_active) {
+			target_x = est_x;
+			target_y = est_y;
+
+			current_wp_index = 0;
+
+			if (Mission_IsReady() && Mission_GetCount() > 0) {
+				mission_running = 1;
+			} else {
+				mission_running = 0;
+			}
+
+			PID_Reset(&PID_Pos_X);
+			PID_Reset(&PID_Pos_Y);
+			PID_Reset(&PID_Vel_X);
+			PID_Reset(&PID_Vel_Y);
+			pos_hold_active = 1;
+		}
+
+		if (mission_running) {
+			Waypoint_t current_wp = Mission_GetWaypoint(current_wp_index);
+
+			float wp_lat_err = (float) current_wp.lat - home_lat;
+			float wp_lon_err = (float) current_wp.lon - home_lon;
+			float wp_target_x = wp_lat_err * 111320.0f;
+			float wp_target_y = wp_lon_err * 111320.0f
+					* cosf(home_lat * DEG_TO_RAD);
+
+			// S-Curve Carrot Chasing
+			float dx_carrot = wp_target_x - target_x;
+			float dy_carrot = wp_target_y - target_y;
+			float dist_carrot_to_wp = sqrtf(
+					dx_carrot * dx_carrot + dy_carrot * dy_carrot);
+
+			if (dist_carrot_to_wp > 0.05f) {
+				float dir_x = dx_carrot / dist_carrot_to_wp;
+				float dir_y = dy_carrot / dist_carrot_to_wp;
+				float current_speed = MAX_NAV_SPEED;
+
+				if (dist_carrot_to_wp < 2.0f) {
+					current_speed = dist_carrot_to_wp * 2.5f;
+					if (current_speed < 0.2f)
+						current_speed = 0.2f;
+				}
+
+				target_x += dir_x * current_speed * dt_val;
+				target_y += dir_y * current_speed * dt_val;
+			}
+
+			float dx_drone = wp_target_x - est_x;
+			float dy_drone = wp_target_y - est_y;
+			float dist_to_wp = sqrtf(dx_drone * dx_drone + dy_drone * dy_drone);
+
+			if (dist_to_wp < WAYPOINT_RADIUS) {
+				if (current_wp_index < Mission_GetCount() - 1) {
+					current_wp_index++;
+				}
+			}
+		}
+		Run_XY_Controller(dt_val);
+		txData.target_x = target_roll;
+		txData.target_y = target_pitch;
+	} else {
+		if (pos_hold_active) {
+			pos_hold_active = 0;
+			mission_running = 0;
+		}
+	}
+}
+
+/* ================= AUTO TAKEOFF & LANDING ================= */
+void Mode_AutoTakeoff(float dt_val) {
+	if (rxData.nut1 && gps_home_set) {
+		if (!takeoff_active) {
+			target_x = est_x;
+			target_y = est_y;
+			target_alt = kf_4d.altitude;
+
+			PID_Reset(&PID_Pos_X);
+			PID_Reset(&PID_Pos_Y);
+			PID_Reset(&PID_Vel_X);
+			PID_Reset(&PID_Vel_Y);
+			PID_Reset(&PID_Alt_Pos);
+			PID_Reset(&PID_Alt_Vel);
+			takeoff_active = 1;
+			takeoff_complete = 0;
+		}
+
+		if (!takeoff_complete) {
+			target_alt += TAKEOFF_SPEED * dt_val;
+			if (target_alt >= TAKEOFF_TARGET_ALT) {
+				target_alt = TAKEOFF_TARGET_ALT;
+				if (abs((int) (target_alt - kf_4d.altitude)) < 20)
+					takeoff_complete = 1;
+			}
+		}
+
+		Run_XY_Controller(dt_val);
+		float err_z = target_alt - kf_4d.altitude;
+		target_vz = constrain(PID_Calculate(&PID_Alt_Pos, err_z, dt_val), -2.0f,
+				2.0f);
+
+		float err_vz = target_vz - kf_4d.velocity;
+		throttle_hover = HOVER_THROTTLE_BASE
+				+ PID_Calculate(&PID_Alt_Vel, err_vz, dt_val);
+	} else {
+		takeoff_active = 0;
+	}
+}
+
+void Mode_AutoLanding(float dt_val) {
+	if (!landing_active) {
+		target_x = est_x;
+		target_y = est_y;
+		target_alt = kf_4d.altitude;
+
+		PID_Reset(&PID_Pos_X);
+		PID_Reset(&PID_Pos_Y);
+		PID_Reset(&PID_Vel_X);
+		PID_Reset(&PID_Vel_Y);
+		PID_Reset(&PID_Alt_Pos);
+		PID_Reset(&PID_Alt_Vel);
+
+		landing_active = 1;
+		landing_complete = 0;
+	}
+
+	if (!landing_complete) {
+		target_alt -= LANDING_SPEED * dt_val;
+
+		if (target_alt <= 5.0f || kf_4d.velocity <= 10.0f) {
+			target_alt = 0.0f;
+			landing_complete = 1;
+		}
+
+		Run_XY_Controller(dt_val);
+
+		float err_z = target_alt - kf_4d.altitude;
+		target_vz = constrain(PID_Calculate(&PID_Alt_Pos, err_z, dt_val), -2.0f,
+				2.0f);
+
+		float err_vz = target_vz - kf_4d.velocity;
+		throttle_hover = HOVER_THROTTLE_BASE
+				+ PID_Calculate(&PID_Alt_Vel, err_vz, dt_val);
+		throttle = throttle_hover;
+	} else {
+		throttle = 1000;
+		target_vz = 0;
+		landing_active = 0;
+	}
+}

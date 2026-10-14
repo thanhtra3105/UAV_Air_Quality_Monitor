@@ -6,15 +6,7 @@
  */
 
 #include "icm20602.h"
-
-static uint8_t ICM_SPI_RW(uint8_t data)
-{
-    uint8_t rx;
-
-    HAL_SPI_TransmitReceive(&hspi1,&data,&rx,1,100);
-
-    return rx;
-}
+#include <string.h>
 
 uint8_t ICM20602_ReadReg(uint8_t reg)
 {

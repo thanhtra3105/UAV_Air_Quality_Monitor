@@ -152,280 +152,46 @@ uint8_t MTF01_Update(MTF01_t *mtf) {
 	return 0;
 }
 
+float MTF01_Median3(float x) {
+	static float buf[3] = { 0 };
+	static uint8_t index = 0;
+
+	buf[index] = x;
+	index = (index + 1) % 3;
+
+	float a = buf[0];
+	float b = buf[1];
+	float c = buf[2];
+
+	if (a > b) {
+		float t = a;
+		a = b;
+		b = t;
+	}
+
+	if (b > c) {
+		float t = b;
+		b = c;
+		c = t;
+	}
+
+	if (a > b) {
+		float t = a;
+		a = b;
+		b = t;
+	}
+
+	return b;
+}
+
 void MTF01_UART_ErrorCallback(UART_HandleTypeDef *huart) {
 	// Kiểm tra xem lỗi có xuất phát từ UART của GPS không
 	if (huart->Instance == USART2) {
 		__HAL_UART_CLEAR_OREFLAG(huart);
 		HAL_UART_AbortReceive(huart);
-		extern uint8_t uart_rx_mtf01;
 		HAL_UARTEx_ReceiveToIdle_DMA(huart, rx_mtf01_buffer,
-				MTF01_RX_BUFFER_SIZE);
+		MTF01_RX_BUFFER_SIZE);
 	}
 
 }
 
-//
-//
-///*
-// * mtf01.c
-// *
-// * Part 2
-// */
-//
-//#include "mtf01.h"
-//#include <string.h>
-//
-///*==========================================================
-// *
-// * Local Function
-// *
-// *==========================================================*/
-//
-//static bool Micolink_Checksum(MICOLINK_Frame_t *frame)
-//{
-//    uint8_t checksum = 0;
-//
-//    checksum += frame->head;
-//    checksum += frame->dev_id;
-//    checksum += frame->sys_id;
-//    checksum += frame->msg_id;
-//    checksum += frame->seq;
-//    checksum += frame->len;
-//
-//    for(uint8_t i=0;i<frame->len;i++)
-//    {
-//        checksum += frame->payload[i];
-//    }
-//
-//    return (checksum == frame->checksum);
-//}
-//
-///*==========================================================
-// *
-// * Initialize
-// *
-// *==========================================================*/
-//
-//void MTF01_Init(MTF01_Handle_t *mtf,
-//                UART_HandleTypeDef *huart)
-//{
-//    memset(mtf,0,sizeof(MTF01_Handle_t));
-//
-//    mtf->huart = huart;
-//
-//    mtf->frame.state = MICOLINK_WAIT_HEAD;
-//
-//    HAL_UART_Receive_IT(mtf->huart,
-//                        &mtf->rx_byte,
-//                        1);
-//}
-//
-///*==========================================================
-// *
-// * Parser
-// *
-// *==========================================================*/
-//
-//void MTF01_InputByte(MTF01_Handle_t *mtf,
-//                     uint8_t byte)
-//{
-//    MICOLINK_Frame_t *frame = &mtf->frame;
-//
-//    switch(frame->state)
-//    {
-//
-//    /*------------------------------------------*/
-//
-//    case MICOLINK_WAIT_HEAD:
-//
-//        if(byte == MICOLINK_HEAD)
-//        {
-//            frame->head = byte;
-//            frame->payload_index = 0;
-//            frame->state = MICOLINK_DEV_ID;
-//        }
-//
-//        break;
-//
-//    /*------------------------------------------*/
-//
-//    case MICOLINK_DEV_ID:
-//
-//        frame->dev_id = byte;
-//        frame->state = MICOLINK_SYS_ID;
-//
-//        break;
-//
-//    /*------------------------------------------*/
-//
-//    case MICOLINK_SYS_ID:
-//
-//        frame->sys_id = byte;
-//        frame->state = MICOLINK_MSG_ID;
-//
-//        break;
-//
-//    /*------------------------------------------*/
-//
-//    case MICOLINK_MSG_ID:
-//
-//        frame->msg_id = byte;
-//        frame->state = MICOLINK_SEQ;
-//
-//        break;
-//
-//    /*------------------------------------------*/
-//
-//    case MICOLINK_SEQ:
-//
-//        frame->seq = byte;
-//        frame->state = MICOLINK_LEN;
-//
-//        break;
-//
-//    /*------------------------------------------*/
-//
-//    case MICOLINK_LEN:
-//
-//        frame->len = byte;
-//
-//        if(frame->len > MICOLINK_MAX_PAYLOAD)
-//        {
-//            frame->state = MICOLINK_WAIT_HEAD;
-//        }
-//        else if(frame->len == 0)
-//        {
-//            frame->state = MICOLINK_CHECKSUM;
-//        }
-//        else
-//        {
-//            frame->payload_index = 0;
-//            frame->state = MICOLINK_PAYLOAD;
-//        }
-//
-//        break;
-//
-//    /*------------------------------------------*/
-//
-//    case MICOLINK_PAYLOAD:
-//
-//        frame->payload[frame->payload_index++] = byte;
-//
-//        if(frame->payload_index >= frame->len)
-//        {
-//            frame->state = MICOLINK_CHECKSUM;
-//        }
-//
-//        break;
-//
-//    /*------------------------------------------*/
-//
-//    case MICOLINK_CHECKSUM:
-//
-//        frame->checksum = byte;
-//
-//        frame->state = MICOLINK_WAIT_HEAD;
-//
-//        if(Micolink_Checksum(frame))
-//        {
-//            mtf->new_data = 1;
-//        }
-//
-//        break;
-//
-//    /*------------------------------------------*/
-//
-//    default:
-//
-//        frame->state = MICOLINK_WAIT_HEAD;
-//        frame->payload_index = 0;
-//
-//        break;
-//
-//    }
-//
-//}
-//
-///*==========================================================
-// *
-// * UART Callback
-// *
-// *==========================================================*/
-//
-//void MTF01_UARTCallback(MTF01_Handle_t *mtf)
-//{
-//    MTF01_InputByte(mtf,
-//                    mtf->rx_byte);
-//
-//    HAL_UART_Receive_IT(mtf->huart,
-//                        &mtf->rx_byte,
-//                        1);
-//}
-//
-//
-//
-//
-///*==========================================================
-// *
-// * Read Data
-// *
-// *==========================================================*/
-//
-//bool MTF01_Read(MTF01_Handle_t *mtf,
-//                MTF01_Data_t *data)
-//{
-//    const MICOLINK_RangePayload_t *payload;
-//
-//    if(mtf->new_data == 0)
-//    {
-//        return false;
-//    }
-//
-//    mtf->new_data = 0;
-//
-//    /*------------------------------------------------------
-//     * Check Message ID
-//     *-----------------------------------------------------*/
-//
-//    if(mtf->frame.msg_id != MICOLINK_MSG_RANGE_SENSOR)
-//    {
-//        return false;
-//    }
-//
-//    /*------------------------------------------------------
-//     * Check Payload Length
-//     *-----------------------------------------------------*/
-//
-//    if(mtf->frame.len != sizeof(MICOLINK_RangePayload_t))
-//    {
-//        return false;
-//    }
-//
-//    /*------------------------------------------------------
-//     * Decode Payload
-//     *-----------------------------------------------------*/
-//
-//    payload = (const MICOLINK_RangePayload_t *)mtf->frame.payload;
-//
-//    mtf->data.timestamp_ms = payload->time_ms;
-//
-//    mtf->data.distance_mm = payload->distance;
-//
-//    mtf->data.strength = payload->strength;
-//
-//    mtf->data.precision = payload->precision;
-//
-//    mtf->data.tof_status = payload->tof_status;
-//
-//    mtf->data.flow_vel_x = payload->flow_vel_x;
-//
-//    mtf->data.flow_vel_y = payload->flow_vel_y;
-//
-//    mtf->data.flow_quality = payload->flow_quality;
-//
-//    mtf->data.flow_status = payload->flow_status;
-//
-//    *data = mtf->data;
-//
-//    return true;
-//}

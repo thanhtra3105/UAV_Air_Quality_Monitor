@@ -7,20 +7,12 @@
  */
 
 #include "nrf.h"
+#include <string.h>
 
 /*==========================================================
                     PRIVATE FUNCTION
 ==========================================================*/
 extern SPI_HandleTypeDef hspi2;
-
-static uint8_t SPI_RW(uint8_t data)
-{
-    uint8_t rx;
-
-    HAL_SPI_TransmitReceive(&hspi2, &data, &rx, 1, HAL_MAX_DELAY);
-
-    return rx;
-}
 
 static void NRF24_Activate(void)
 {
