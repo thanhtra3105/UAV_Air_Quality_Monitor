@@ -182,7 +182,6 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size) {
 	}
 }
 
-
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart) {
 	// Kiểm tra xem lỗi có xuất phát từ UART của GPS không
 	GPS_UART_ErrorCallback(huart);
@@ -208,12 +207,6 @@ void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c) {
 //	HAL_I2C_Init(hi2c);
 	DSP310_I2C_ErrorCallback(hi2c);
 }
-
-
-
-
-
-
 
 /* USER CODE END 0 */
 
@@ -386,6 +379,7 @@ int main(void) {
 //		Estimate_Position_GPS_Kalman(dt);
 //		Estimate_Position_Kalman(dt);
 		Estimate_Position(dt);
+
 		PID_Task(dt);
 		mixer();
 		if (DWT_GetMicros() - ina219_timer > 500000) {

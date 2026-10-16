@@ -19,20 +19,18 @@ volatile uint8_t mtf01_data_ready = 0;
 // CÁC HÀM PARSER CHUẨN TỪ TÀI LIỆU MICOAIR
 // ---------------------------------------------------------
 bool micolink_check_sum(MICOLINK_MSG_t *msg) {
-	uint8_t length = msg->len + 6;
-	uint8_t temp[MICOLINK_MAX_LEN];
 	uint8_t checksum = 0;
-
-	memcpy(temp, msg, length);
-
-	for (uint8_t i = 0; i < length; i++) {
-		checksum += temp[i];
+	checksum += msg->head;
+	checksum += msg->dev_id;
+	checksum += msg->sys_id;
+	checksum += msg->msg_id;
+	checksum += msg->seq;
+	checksum += msg->len;
+	for (uint8_t i = 0; i < msg->len; i++) {
+		checksum += msg->payload[i];
 	}
 
-	if (checksum == msg->checksum)
-		return true;
-	else
-		return false;
+	return (checksum == msg->checksum);
 }
 
 bool micolink_parse_char(MICOLINK_MSG_t *msg, uint8_t data) {
@@ -40,7 +38,8 @@ bool micolink_parse_char(MICOLINK_MSG_t *msg, uint8_t data) {
 	case 0:     // Header
 		if (data == MICOLINK_MSG_HEAD) {
 			msg->head = data;
-			msg->status++;
+			msg->payload_cnt = 0; // Đảm bảo reset lại vị trí ghi payload
+			msg->status = 1;
 		}
 		break;
 	case 1:     // Device ID
@@ -101,12 +100,10 @@ void MTF01_Init(UART_HandleTypeDef *huart) {
 
 // Thay thế hoàn toàn hàm MTF01_Process cũ bằng hàm dưới đây
 void MTF01_UART_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size) {
-	// Quét từng byte trong mẻ dữ liệu DMA vừa đẩy vào
+	// Quét liên tục từng byte để máy trạng thái không bao giờ bị lệch pha
 	for (uint16_t i = 0; i < Size; i++) {
-		if (!mtf01_data_ready) {
-			if (micolink_parse_char(&micolink_msg, rx_mtf01_buffer[i])) {
-				mtf01_data_ready = 1;
-			}
+		if (micolink_parse_char(&micolink_msg, rx_mtf01_buffer[i])) {
+			mtf01_data_ready = 1;
 		}
 	}
 	// Khởi động lại DMA để đón mẻ dữ liệu tiếp theo
@@ -121,8 +118,13 @@ uint8_t MTF01_Update(MTF01_t *mtf) {
 			MICOLINK_PAYLOAD_RANGE_SENSOR_t payload;
 			memcpy(&payload, micolink_msg.payload, micolink_msg.len);
 
-			mtf->distance = payload.distance;
-			mtf->dist_quality = payload.strength;
+			// Chỉ cập nhật khoảng cách khi ToF báo hợp lệ (tof_status != 0) và khoảng cách > 0
+			// Nếu hụt tia (distance == 0), giữ nguyên giá trị cũ, không để nó nhảy về 0
+			if (payload.tof_status != 0 && payload.distance > 0) {
+				mtf->distance = payload.distance;
+				mtf->dist_quality = payload.strength;
+			}
+
 			mtf->flow_x = payload.flow_vel_x;
 			mtf->flow_y = payload.flow_vel_y;
 			mtf->flow_quality = payload.flow_quality;

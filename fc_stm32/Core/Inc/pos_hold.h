@@ -30,7 +30,7 @@
 
 #define WAYPOINT_RADIUS     2.0f     // Bán kính xác nhận đến điểm (m)
 #define MAX_NAV_SPEED       5.0f     // Tốc độ di chuyển tối đa (m/s)
-#define LANDING_SPEED       40.0f    // Tốc độ hạ cánh (cm/s)
+#define LANDING_SPEED       20.0f    // Tốc độ hạ cánh (cm/s)
 
 /* ================= EXTERN STATE VARIABLES ================= */
 // Gia tốc & Bias trong Earth Frame
@@ -73,5 +73,8 @@ void Run_XY_Controller(float dt);
 void GPS_PositionHold(float dt);
 void Mode_AutoTakeoff(float dt);
 void Mode_AutoLanding(float dt);
+void Takeoff_Init(void);
+void FlightMode_Execute(float dt_val);
+void Landing_Init(void);
 
 #endif /* INC_POS_HOLD_H_ */

@@ -57,6 +57,16 @@ typedef enum {
 	ALT_STATE_LANDING
 } AltHoldState_t;
 
+typedef enum {\
+	MODE_ARM = 0,
+	MODE_DISARM,
+    MODE_MANUAL,
+    MODE_TAKEOFF,
+    MODE_POSHOLD,
+    MODE_ALTHOLD,
+    MODE_LANDING
+} FlightMode_t;
+
 /* ================= MATH UTILITIES ================= */
 static inline float constrain(float data, float min, float max) {
 	if (data <= min)

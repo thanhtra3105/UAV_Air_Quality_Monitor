@@ -57,6 +57,12 @@ uint8_t landing_complete = 0;
 float target_pitch_body = 0.0f;
 float target_roll_body = 0.0f;
 
+/* ============ FLIGHT MODE ==============*/
+FlightMode_t flight_mode = MODE_MANUAL;
+static uint32_t takeoff_stable_time = 0;
+static uint32_t landing_touchdown_time = 0;
+static uint32_t takeoff_pre_time = 0;
+
 /* ================= INITIALIZATION ================= */
 void PosHold_Init(void) {
 	KalmanAxis_Init(&kf_x);
@@ -484,3 +490,173 @@ void Mode_AutoLanding(float dt_val) {
 		landing_active = 0;
 	}
 }
+
+void Takeoff_Init(void) {
+	// 1. Chốt vị trí neo mặt đất
+	target_x = est_x;
+	target_y = est_y;
+	target_yaw = yaw;
+	target_alt = kf_4d.altitude; // Độ cao hiện tại dưới đất
+	// 2. Xóa tích phân PID để máy bay không bị giật
+	PID_Reset(&PID_Pos_X);
+	PID_Reset(&PID_Pos_Y);
+	PID_Reset(&PID_Vel_X);
+	PID_Reset(&PID_Vel_Y);
+	PID_Reset(&PID_Alt_Pos);
+	PID_Reset(&PID_Alt_Vel);
+	takeoff_stable_time = 0;
+}
+
+void Landing_Init(void) {
+	// 1. Chốt tọa độ điểm đáp tại vị trí hiện tại
+	target_x = est_x;
+	target_y = est_y;
+	target_yaw = yaw;
+	target_alt = kf_4d.altitude; // Bắt đầu hạ từ độ cao hiện tại
+
+	// 2. Reset tích phân PID để hạ cánh êm dịu, không giật
+	PID_Reset(&PID_Pos_X);
+	PID_Reset(&PID_Pos_Y);
+	PID_Reset(&PID_Vel_X);
+	PID_Reset(&PID_Vel_Y);
+	PID_Reset(&PID_Alt_Pos);
+	PID_Reset(&PID_Alt_Vel);
+
+	landing_touchdown_time = 0;
+}
+
+void FlightMode_Execute(float dt_val) {
+
+	switch (flight_mode) {
+	case MODE_ARM: {
+		throttle = 1100;
+		break;
+	}
+	case MODE_DISARM: {
+		if(throttle >1010)
+			throttle -=5;
+		pid_alt = 0;
+		PID_Reset(&PID_Rate_Pitch);
+		PID_Reset(&PID_Rate_Roll);
+		PID_Reset(&PID_Rate_Yaw);
+		PID_Reset(&PID_Angle);
+		PID_Reset(&PID_Pos_X);
+		PID_Reset(&PID_Pos_Y);
+		PID_Reset(&PID_Vel_X);
+		PID_Reset(&PID_Vel_Y);
+		PID_Reset(&PID_Alt_Pos);
+		PID_Reset(&PID_Alt_Vel);
+
+		break;
+	}
+	case MODE_TAKEOFF: {		// tinh toan ra target_vz
+		if (kf_4d.altitude > 20.0f) {
+			Run_XY_Controller(dt_val);
+		} else {
+			// Đang sát đất: Giữ cánh thăng bằng tuyệt đối phẳng, cấm nghiêng trượt sàn
+			target_pitch = 0.0f;
+			target_roll = 0.0f;
+			target_x = est_x; // Cập nhật lại điểm neo liên tục khi còn dưới đất
+			target_y = est_y;
+			PID_Reset(&PID_Pos_X);
+			PID_Reset(&PID_Pos_Y);
+			PID_Reset(&PID_Vel_X);
+			PID_Reset(&PID_Vel_Y);
+			takeoff_pre_time = HAL_GetTick();
+		}
+
+		// 2. Nâng dần target_alt theo tốc độ dốc
+		target_alt += TAKEOFF_SPEED * dt_val;
+		if (target_alt >= TAKEOFF_TARGET_ALT) {
+			target_alt = TAKEOFF_TARGET_ALT;
+		}
+		// 3. Điều khiển Z (Cascade PID)
+		float err_z = target_alt - kf_4d.altitude;
+		target_vz = constrain(PID_Calculate(&PID_Alt_Pos, err_z, dt_val),
+				-MAX_TARGET_VZ, MAX_TARGET_VZ);
+
+		float err_vz = target_vz - kf_4d.velocity;
+		pid_alt = PID_Calculate(&PID_Alt_Vel, err_vz, dt_val);
+		throttle = HOVER_THROTTLE_BASE;
+		// 4. Kiểm tra đạt độ cao mục tiêu -> Chuyển sang POSHOLD
+		if (fabsf(TAKEOFF_TARGET_ALT - kf_4d.altitude) < 15.0f
+				&& fabsf(kf_4d.velocity) < 15.0f) {	// dat sai so vi tri mong doi la 15cm va van toc luc do duoi 15cm/s2 thi xem takeoff thanh cong
+			if (takeoff_stable_time == 0) {
+				takeoff_stable_time = HAL_GetTick();
+			} else if (HAL_GetTick() - takeoff_stable_time > 400) { // Ổn định trong 400ms
+				// Chuyển sang PosHold thành công!
+				flight_mode = MODE_POSHOLD;
+			}
+		} else {
+			takeoff_stable_time = 0;
+		}
+		if(HAL_GetTick() - takeoff_pre_time > 8000)	// cất cánh lâu quá thì cho poshold tại đó luôn;
+		{
+			flight_mode = MODE_POSHOLD;
+		}
+		break;
+	}
+	case MODE_POSHOLD: {
+		// Giữ vị trí XY
+		Run_XY_Controller(dt_val);
+		// Giữ độ cao Z tại target_alt đã đạt được
+		float err_z = target_alt - kf_4d.altitude;
+		target_vz = constrain(PID_Calculate(&PID_Alt_Pos, err_z, dt_val),
+				-MAX_TARGET_VZ, MAX_TARGET_VZ);
+		float err_vz = target_vz - kf_4d.velocity;
+		pid_alt = PID_Calculate(&PID_Alt_Vel, err_vz, dt_val);
+		throttle = HOVER_THROTTLE_BASE;
+		break;
+	}
+	case MODE_LANDING: {
+		if (kf_4d.altitude > 20) {
+			Run_XY_Controller(dt_val);
+		} else {
+			// Đang sát đất: Giữ cánh thăng bằng tuyệt đối phẳng, cấm nghiêng trượt sàn
+			target_pitch = 0.0f;
+			target_roll = 0.0f;
+			target_x = est_x;// Cập nhật lại điểm neo liên tục khi còn dưới đất
+			target_y = est_y;
+			PID_Reset(&PID_Pos_X);
+			PID_Reset(&PID_Pos_Y);
+			PID_Reset(&PID_Vel_X);
+			PID_Reset(&PID_Vel_Y);
+		}
+		// 2. giảm dần target vertical velocity
+		target_alt -= LANDING_SPEED * dt_val;
+		if (target_alt <= 0) {
+			target_alt = 0;
+		}
+		// 3. Điều khiển Z (Cascade PID)
+		float err_z = target_alt - kf_4d.altitude;
+		target_vz = constrain(PID_Calculate(&PID_Alt_Pos, err_z, dt_val),
+				-MAX_TARGET_VZ, MAX_TARGET_VZ);
+
+		float err_vz = target_vz - kf_4d.velocity;
+		pid_alt = PID_Calculate(&PID_Alt_Vel, err_vz, dt_val);
+		throttle = HOVER_THROTTLE_BASE;
+		// 4. Kiểm tra đạt độ cao mục tiêu -> Chuyển sang POSHOLD
+		if (kf_4d.altitude < 15.0f && fabsf(kf_4d.velocity) < 15.0f) {// cach mat dat 10cm va van toc luc do duoi 15cm/s2 thi xem takeoff thanh cong
+			if (landing_touchdown_time == 0) {
+				landing_touchdown_time = HAL_GetTick();
+			} else if (HAL_GetTick() - landing_touchdown_time > 400) { // Ổn định trong 400ms
+				flight_mode = MODE_DISARM;
+			}
+		} else {
+			landing_touchdown_time = 0;
+		}
+
+		break;
+	}
+
+	case MODE_MANUAL:
+	{
+		throttle = throttle_rx;
+		break;
+	}
+	default:
+		pid_alt = 0;
+		break;
+	}
+}
+

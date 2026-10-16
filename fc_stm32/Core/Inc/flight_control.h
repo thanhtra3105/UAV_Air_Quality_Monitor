@@ -21,14 +21,14 @@
 #define USE_IST8310
 //#define USE_QMC5883
 
-#define TAKEOFF_TARGET_ALT  200.0f  // Độ cao cất cánh mục tiêu (cm)
-#define TAKEOFF_SPEED       50.0f  // Tốc độ cất cánh (cm/s)
-#define HOVER_THROTTLE_BASE 1400.0f
+#define TAKEOFF_TARGET_ALT  130.0f  // Độ cao cất cánh mục tiêu (cm)
+#define TAKEOFF_SPEED       80.0f  // Tốc độ cất cánh (cm/s)
+#define HOVER_THROTTLE_BASE 1550.0f
 #define PILOT_TAKE_OFF_ALT  200.0f  // 2 mét (cm)
 #define CLIMB_RATE          150.0f  // Tốc độ leo 1.5 m/s
 #define DESCEND_RATE        100.0f  // Tốc độ hạ 1.0 m/s
-#define DEADZONE_LOW        1300
-#define DEADZONE_HIGH       1500
+#define DEADZONE_LOW        1450
+#define DEADZONE_HIGH       1550
 
 #define MAX_TARGET_ROLL_PITCH 8.0f
 #define MAX_TARGET_VZ         80.0f
@@ -65,7 +65,9 @@ extern float current_alt, target_alt, target_vz;
 extern uint8_t alt_hold, alt_init;
 
 // Throttle & Outputs
-extern int throttle, throttle_hover;
+extern int throttle;
+extern int throttle_hover;
+extern int throttle_rx;
 extern float pid_p, pid_r, pid_y, pid_alt, pid_alt_vel_out;
 
 // RC State
