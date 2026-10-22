@@ -1,4 +1,4 @@
-../Core/Inc/types.h:71:21:constrain	24	static
+../Core/Inc/types.h:72:21:constrain	24	static
 ../Core/Src/pos_hold.c:67:6:PosHold_Init	8	static
 ../Core/Src/pos_hold.c:75:6:Estimate_Position_Kalman	72	static
 ../Core/Src/pos_hold.c:127:6:Estimate_Position	72	static
@@ -11,4 +11,5 @@
 ../Core/Src/pos_hold.c:499:6:Takeoff_Init	8	static
 ../Core/Src/pos_hold.c:515:6:Landing_Init	8	static
 ../Core/Src/pos_hold.c:533:6:Poshold_Init	8	static
-../Core/Src/pos_hold.c:545:6:FlightMode_Execute	40	static
+../Core/Src/pos_hold.c:552:6:Navigation_Init	8	static
+../Core/Src/pos_hold.c:567:6:FlightMode_Execute	136	static

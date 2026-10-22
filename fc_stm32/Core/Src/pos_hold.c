@@ -535,6 +535,12 @@ void Poshold_Init() {
 	target_y = est_y;
 	target_yaw = yaw;
 	target_alt = kf_4d.altitude;
+	if (throttle_rx > 1150 && throttle_rx < 1850) {
+		throttle_hover = throttle_rx; // Nhớ mức ga thực tế lúc đang bay
+	}
+//	else {
+//		throttle_hover = HOVER_THROTTLE_BASE;
+//	}
 	PID_Reset(&PID_Pos_X);
 	PID_Reset(&PID_Pos_Y);
 	PID_Reset(&PID_Vel_X);
@@ -542,6 +548,22 @@ void Poshold_Init() {
 	PID_Reset(&PID_Alt_Pos);
 	PID_Reset(&PID_Alt_Vel);
 }
+
+void Navigation_Init(void) {
+	target_x = est_x;
+	target_y = est_y;
+	target_yaw = yaw;
+	target_alt = kf_4d.altitude; // Chốt độ cao hiện tại
+	current_wp_index = 0;        // Bắt đầu từ Waypoint 0
+
+	PID_Reset(&PID_Pos_X);
+	PID_Reset(&PID_Pos_Y);
+	PID_Reset(&PID_Vel_X);
+	PID_Reset(&PID_Vel_Y);
+	PID_Reset(&PID_Alt_Pos);
+	PID_Reset(&PID_Alt_Vel);
+}
+
 void FlightMode_Execute(float dt_val) {
 
 	switch (flight_mode) {
@@ -622,7 +644,7 @@ void FlightMode_Execute(float dt_val) {
 				-MAX_TARGET_VZ, MAX_TARGET_VZ);
 		float err_vz = target_vz - kf_4d.velocity;
 		pid_alt = PID_Calculate(&PID_Alt_Vel, err_vz, dt_val);
-		throttle = HOVER_THROTTLE_BASE;
+		throttle = throttle_hover;
 		break;
 	}
 	case MODE_LANDING: {
@@ -668,6 +690,55 @@ void FlightMode_Execute(float dt_val) {
 
 	case MODE_MANUAL: {
 		throttle = throttle_rx;
+		break;
+	}
+	case MODE_NAVIGATION: {
+		Waypoint_t current_wp = Mission_GetWaypoint(current_wp_index);
+		float wp_lat_err = (float) current_wp.lat - home_lat;
+		float wp_lon_err = (float) current_wp.lon - home_lon;
+		float wp_target_x = wp_lat_err * 111320.0f;
+		float wp_target_y = wp_lon_err * 111320.0f
+				* cosf(home_lat * DEG_TO_RAD);
+		// S-Curve Carrot Chasing
+		float dx_carrot = wp_target_x - target_x;
+		float dy_carrot = wp_target_y - target_y;
+		float dist_carrot_to_wp = sqrtf(
+				dx_carrot * dx_carrot + dy_carrot * dy_carrot);
+		if (dist_carrot_to_wp > 0.05f) {
+			float dir_x = dx_carrot / dist_carrot_to_wp;
+			float dir_y = dy_carrot / dist_carrot_to_wp;
+			float current_speed = MAX_NAV_SPEED;
+			if (dist_carrot_to_wp < 2.0f) {
+				current_speed = dist_carrot_to_wp * 2.5f;
+				if (current_speed < 0.2f)
+					current_speed = 0.2f;
+			}
+			target_x += dir_x * current_speed * dt_val;
+			target_y += dir_y * current_speed * dt_val;
+		}
+		float dx_drone = wp_target_x - est_x;
+		float dy_drone = wp_target_y - est_y;
+		float dist_to_wp = sqrtf(dx_drone * dx_drone + dy_drone * dy_drone);
+		if (dist_to_wp < WAYPOINT_RADIUS) {
+			if (current_wp_index < Mission_GetCount() - 1) {
+				current_wp_index++;
+			} else {
+				// Đã hết danh sách Waypoint -> Tự động chuyển về POSHOLD neo tại điểm cuối
+				flight_mode = MODE_POSHOLD;
+				Poshold_Init();      // Chốt neo tại vị trí hiện tại
+				Mission_Init();
+			}
+		}
+
+		// 1. Điều khiển bám vị trí XY (Carrot point)
+		Run_XY_Controller(dt_val);
+		// 2. Giữ độ cao Z
+		float err_z = target_alt - kf_4d.altitude;
+		target_vz = constrain(PID_Calculate(&PID_Alt_Pos, err_z, dt_val),
+				-MAX_TARGET_VZ, MAX_TARGET_VZ);
+		float err_vz = target_vz - kf_4d.velocity;
+		pid_alt = PID_Calculate(&PID_Alt_Vel, err_vz, dt_val);
+		throttle = HOVER_THROTTLE_BASE;
 		break;
 	}
 	default:

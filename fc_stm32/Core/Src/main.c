@@ -315,7 +315,7 @@ int main(void) {
 		HAL_Delay(1);
 	}
 	float h = dsp_sensor.altitude;
-	Kalman4D_Init(&kf_4d, h - alt_offset);
+	Kalman4D_Init(&kf_4d, (h - alt_offset)*100);
 
 	calibIMU();
 
@@ -349,7 +349,7 @@ int main(void) {
 //		uint32_t time_get = HAL_GetTick();
 		dt = 0.002f;
 		RxController();
-		if (!yaw_hold_init && throttle > 1030) {
+		if (!yaw_hold_init && throttle > 1100) {
 			target_yaw = yaw;
 			// home_position = gpsRead();
 			yaw_hold_init = true;
@@ -358,7 +358,7 @@ int main(void) {
 			yaw_hold_init = false;
 			target_yaw = yaw;
 		}
-		if (throttle < 1300) {
+		if (throttle < 1400) {
 			PID_Reset(&PID_Rate_Yaw);
 			PID_Reset(&PID_Rate_Pitch);
 			PID_Reset(&PID_Rate_Roll);

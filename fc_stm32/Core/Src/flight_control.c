@@ -101,14 +101,17 @@ PIDController_t PID_Vel_Y;
 float kp_angle = 6.5f, ki_angle = 0.0f, kd_angle = 0.0f;
 float kp_r = 0.85f, ki_r = 1.0f, kd_r = 0.003f;
 float kp_p = 0.85f, ki_p = 1.0f, kd_p = 0.003f;
-float kp_y = 0.85f, ki_y = 0.0f, kd_y = 0.003f;
+float kp_y = 0.9f, ki_y = 0.5f, kd_y = 0.005f;
 
 float kp_alt = 3.0f, ki_alt = 0.0f, kd_alt = 0.5f;
 float kp_alt_pos = 2.0f, ki_alt_pos = 0.0f, kd_alt_pos = 0.0f;	// Use DSP310
 float kp_alt_vel = 1.0f, ki_alt_vel = 0.2f, kd_alt_vel = 0.003f;
 
-float kp_xy_pos = 1.2f, ki_xy_pos = 0.0f, kd_xy_pos = 0.0f; // MTF01
-float kp_xy_vel = 4.0f, ki_xy_vel = 0.1f, kd_xy_vel = 0.1f;
+//float kp_xy_pos = 1.2f, ki_xy_pos = 0.0f, kd_xy_pos = 0.0f; // MTF01
+//float kp_xy_vel = 4.0f, ki_xy_vel = 0.1f, kd_xy_vel = 0.1f;
+/*	GPS*/
+float kp_xy_pos = 0.4f, ki_xy_pos = 0.0f, kd_xy_pos = 0.0f;
+float kp_xy_vel = 4.0f, ki_xy_vel = 0.0f, kd_xy_vel = 0.2f;
 
 /* ================= INITIALIZATION ================= */
 void FlightControl_Init(void) {
@@ -122,7 +125,7 @@ void FlightControl_Init(void) {
 	PID_Init(&PID_Alt, kp_alt, ki_alt, kd_alt, 0.2f);
 	PID_Init(&PID_Alt_Pos, kp_alt_pos, ki_alt_pos, kd_alt_pos, 0.2f);
 	PID_Init(&PID_Alt_Vel, kp_alt_vel, ki_alt_vel, kd_alt_vel, 0.2f);
-	PID_SetIntegralLimits(&PID_Alt_Vel, -40.0f, 40.0f);
+	PID_SetIntegralLimits(&PID_Alt_Vel, -80.0f, 80.0f);
 
 	PID_Init(&PID_Pos_X, kp_xy_pos, ki_xy_pos, kd_xy_pos, 0.2f);
 	PID_Init(&PID_Pos_Y, kp_xy_pos, ki_xy_pos, kd_xy_pos, 0.2f);
@@ -170,13 +173,37 @@ void readIMU(void) {
 }
 
 void calibIMU(void) {
-	// Offset cứng đã đo đạc
+//	for (int i = 0; i < 500; i++) {
+//		ICM20602_Read(&imu);
+//		ax_offset += imu.accel.x;
+//		ay_offset += imu.accel.y;
+//		az_offset += imu.accel.z;
+//
+//		gx_offset += imu.gyro.x;
+//		gy_offset += imu.gyro.y;
+//		gz_offset += imu.gyro.z;
+//	}
+//	ax_offset = (ax_offset / 500);
+//	ay_offset = (ay_offset / 500);
+//	az_offset = (az_offset / 500);
+//	gx_offset = (gx_offset / 500);
+//	gy_offset = (gy_offset / 500);
+//	gz_offset = (gz_offset / 500);
+
+	// Offset cứng đã đo đạc	OLD Frame
 	ax_offset = -0.0146474605f;
 	ay_offset = -0.020620605f;
 	az_offset = 0.980093241f;
 	gx_offset = 0.379269421f;
 	gy_offset = -0.210610926f;
 	gz_offset = 0.219878733f;
+	// NEW FRAME
+//	ax_offset = -0.0411372073f;
+//	ay_offset = 0.00553248916f;
+//	az_offset = 0.980435789f;
+//	gx_offset = 0.336732179f;
+//	gy_offset = -0.1833487f;
+//	gz_offset = 0.244343385f;
 }
 
 static float computeHeading(float bx, float by, float bz, float roll_deg,
@@ -239,7 +266,7 @@ float angle_diff(float target, float current) {
 }
 
 float range_vertical_cm = 0;
-float range_alt_offset = 12.0f;
+float range_alt_offset = 23.0f;
 float range_cm;
 /* ================= ATTITUDE ESTIMATION (500Hz) ================= */
 void calculateAngle(float dt_val) {
@@ -432,10 +459,15 @@ void RxController(void) {
 						flight_mode = MODE_POSHOLD;
 						Poshold_Init();
 					}
+				}
 
 //					}
 
-				} else if (flight_mode == MODE_POSHOLD) {
+				else if (flight_mode == MODE_POSHOLD) {
+					if (Mission_IsReady() && Mission_GetCount() > 0) {
+						flight_mode = MODE_NAVIGATION;
+						Navigation_Init();
+					}
 					if (rxData.nut2) {
 						flight_mode = MODE_LANDING;
 						Landing_Init();
@@ -446,7 +478,8 @@ void RxController(void) {
 						target_alt = kf_4d.altitude; // Giữ nguyên độ cao lơ lửng
 					}
 				}
-			} else {
+			} else {	// nut 1 KO GAT
+
 				if (flight_mode == MODE_DISARM) {
 					if (rxData.chinhtocdoquat <= 1050) {
 						flight_mode = MODE_MANUAL;

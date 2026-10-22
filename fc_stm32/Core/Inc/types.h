@@ -64,7 +64,8 @@ typedef enum {\
     MODE_TAKEOFF,
     MODE_POSHOLD,
     MODE_ALTHOLD,
-    MODE_LANDING
+    MODE_LANDING,
+	MODE_NAVIGATION
 } FlightMode_t;
 
 /* ================= MATH UTILITIES ================= */
