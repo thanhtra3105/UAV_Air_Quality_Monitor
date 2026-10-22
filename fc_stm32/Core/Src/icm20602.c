@@ -98,6 +98,7 @@ void ICM20602_Read(ICM20602_t *imu)
 
 void ICM20602_Init(void)
 {
+
     HAL_Delay(100);
 
     /* Wake up */

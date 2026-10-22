@@ -99,6 +99,7 @@ DMA_HandleTypeDef handle_GPDMA2_Channel1;
 DMA_HandleTypeDef handle_GPDMA1_Channel0;
 DMA_HandleTypeDef handle_GPDMA1_Channel2;
 
+//extern QMC5883_t mag;
 /* USER CODE BEGIN PV */
 
 /* USER CODE END PV */
@@ -271,6 +272,7 @@ int main(void) {
 	HAL_I2C_Init(&hi2c1);
 	HAL_I2C_Init(&hi2c2);
 #ifdef USE_QMC5883
+	extern QMC5883_t mag;
 	QMC5883_Init(&hi2c2, &mag, 0x00, 0x01, 0x03, 0x01);
 #else
 	IST8310_Init(&hi2c2, &ist8310);
@@ -376,9 +378,9 @@ int main(void) {
 //		}
 		readIMU();
 		calculateAngle(dt);
-//		Estimate_Position_GPS_Kalman(dt);
+		Estimate_Position_GPS_Kalman(dt);
 //		Estimate_Position_Kalman(dt);
-		Estimate_Position(dt);
+//		Estimate_Position(dt);
 
 		PID_Task(dt);
 		mixer();

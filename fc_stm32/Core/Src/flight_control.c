@@ -19,6 +19,7 @@ extern I2C_HandleTypeDef hi2c1;
 extern I2C_HandleTypeDef hi2c2;
 extern UART_HandleTypeDef huart1;
 extern GPS_Data_t gps;
+extern uint8_t gps_home_set;
 
 /* ================= SENSOR & STATE VARIABLES ================= */
 ControlData rxData;
@@ -103,8 +104,8 @@ float kp_p = 0.85f, ki_p = 1.0f, kd_p = 0.003f;
 float kp_y = 0.85f, ki_y = 0.0f, kd_y = 0.003f;
 
 float kp_alt = 3.0f, ki_alt = 0.0f, kd_alt = 0.5f;
-float kp_alt_pos = 1.0f, ki_alt_pos = 0.0f, kd_alt_pos = 0.0f;	// Use DSP310
-float kp_alt_vel = 0.8f, ki_alt_vel = 0.0f, kd_alt_vel = 0.003f;
+float kp_alt_pos = 2.0f, ki_alt_pos = 0.0f, kd_alt_pos = 0.0f;	// Use DSP310
+float kp_alt_vel = 1.0f, ki_alt_vel = 0.2f, kd_alt_vel = 0.003f;
 
 float kp_xy_pos = 1.2f, ki_xy_pos = 0.0f, kd_xy_pos = 0.0f; // MTF01
 float kp_xy_vel = 4.0f, ki_xy_vel = 0.1f, kd_xy_vel = 0.1f;
@@ -138,10 +139,10 @@ void writeMotor(uint8_t chanel, int16_t us) {
 }
 
 void mixer(void) {
-	int m1 = (int) (float) throttle - pid_p - pid_r - pid_y + pid_alt;
-	int m2 = (int) (float) throttle + pid_p - pid_r + pid_y + pid_alt;
-	int m3 = (int) (float) throttle + pid_p + pid_r - pid_y + pid_alt;
-	int m4 = (int) (float) throttle - pid_p + pid_r + pid_y + pid_alt;
+	int m1 = (int) (float) throttle - pid_p - pid_r + pid_y + pid_alt;
+	int m2 = (int) (float) throttle + pid_p - pid_r - pid_y + pid_alt;
+	int m3 = (int) (float) throttle + pid_p + pid_r + pid_y + pid_alt;
+	int m4 = (int) (float) throttle - pid_p + pid_r - pid_y + pid_alt;
 
 	if (throttle > 1040) {
 		writeMotor(M1, m1);
@@ -400,14 +401,16 @@ void PID_Task(float dt_pid) {
 void Failsafe_Task(void) {
 	if (HAL_GetTick() - timeout_connected > 1000) {
 		alt_hold = false;
-
+		rxData.nut1 = 0;
+		rxData.nut2 = 0;
+		flight_mode = MODE_MANUAL;
 		if (HAL_GetTick() - time_throttle > 400) {
 			if (throttle > 1200) {
-				throttle -= 5;
+				throttle_rx -= 5;
 				time_throttle = HAL_GetTick();
 			} else {
 				if (kf_4d.velocity < 10.0f)
-					throttle = 1000;
+					throttle_rx = 1000;
 			}
 		}
 	}
@@ -419,14 +422,18 @@ void RxController(void) {
 
 		if (len == sizeof(ControlData)) {
 			NRF24_Read((uint8_t*) &rxData, len);
-
 			if (rxData.nut1) {
 				if (flight_mode == MODE_MANUAL) {
-					if (rxData.chinhtocdoquat >= DEADZONE_LOW
-							&& rxData.chinhtocdoquat <= DEADZONE_HIGH) {
-						flight_mode = MODE_TAKEOFF;
-						Takeoff_Init();
+//					if (rxData.chinhtocdoquat >= DEADZONE_LOW
+//							&& rxData.chinhtocdoquat <= DEADZONE_HIGH) {
+//						flight_mode = MODE_TAKEOFF;
+//						Takeoff_Init();
+					if (gps_home_set) {
+						flight_mode = MODE_POSHOLD;
+						Poshold_Init();
 					}
+
+//					}
 
 				} else if (flight_mode == MODE_POSHOLD) {
 					if (rxData.nut2) {
@@ -440,7 +447,17 @@ void RxController(void) {
 					}
 				}
 			} else {
-				flight_mode = MODE_MANUAL;
+				if (flight_mode == MODE_DISARM) {
+					if (rxData.chinhtocdoquat <= 1050) {
+						flight_mode = MODE_MANUAL;
+					} else {
+						flight_mode = MODE_DISARM;
+						throttle_rx = 1000;
+					}
+				} else {
+					// Nếu đang bay mà tắt nut1 -> Trả quyền điều khiển về MANUAL ngay lập tức!
+					flight_mode = MODE_MANUAL;
+				}
 				pos_hold_active = 0;
 				alt_hold = 0;
 			}
@@ -469,6 +486,7 @@ void RxController(void) {
 		txData.target_y = kf_4d.velocity;
 		NRF24_WriteAckPayload(0, (uint8_t*) &txData, sizeof(TelemetryData));
 	} else {
+
 		Failsafe_Task();
 	}
 }

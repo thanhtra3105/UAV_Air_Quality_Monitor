@@ -23,7 +23,7 @@
 
 #define TAKEOFF_TARGET_ALT  130.0f  // Độ cao cất cánh mục tiêu (cm)
 #define TAKEOFF_SPEED       80.0f  // Tốc độ cất cánh (cm/s)
-#define HOVER_THROTTLE_BASE 1550.0f
+#define HOVER_THROTTLE_BASE 1450.0f
 #define PILOT_TAKE_OFF_ALT  200.0f  // 2 mét (cm)
 #define CLIMB_RATE          150.0f  // Tốc độ leo 1.5 m/s
 #define DESCEND_RATE        100.0f  // Tốc độ hạ 1.0 m/s

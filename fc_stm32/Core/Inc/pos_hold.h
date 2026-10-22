@@ -76,5 +76,6 @@ void Mode_AutoLanding(float dt);
 void Takeoff_Init(void);
 void FlightMode_Execute(float dt_val);
 void Landing_Init(void);
+void Poshold_Init() ;
 
 #endif /* INC_POS_HOLD_H_ */

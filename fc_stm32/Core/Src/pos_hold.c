@@ -98,10 +98,10 @@ void Estimate_Position_Kalman(float dt_val) {
 	float flow_vy = body_vx * sy + body_vy * cy;
 
 	/* 3. Kalman PREDICT (Dựa vào IMU) */
-//	float ax_input = ax_earth - ax_bias;
-//	float ay_input = ay_earth - ay_bias;
-	KalmanAxis_Predict(&kf_x, ax_earth, dt_val);
-	KalmanAxis_Predict(&kf_y, ay_earth, dt_val);
+	float ax_input = ax_earth - ax_bias;
+	float ay_input = ay_earth - ay_bias;
+	KalmanAxis_Predict(&kf_x, ax_input, dt_val);
+	KalmanAxis_Predict(&kf_y, ay_input, dt_val);
 
 	/* 4. Kalman UPDATE (Dựa vào Optical Flow) */
 	if (mtf01_updated) {
@@ -110,8 +110,8 @@ void Estimate_Position_Kalman(float dt_val) {
 			float err_vy = flow_vy - kf_y.vel;
 			ax_bias += KI_FLOW * err_vx * dt_val;
 			ay_bias += KI_FLOW * err_vy * dt_val;
-			KalmanAxis_UpdateVel(&kf_x, flow_vx, 0.05);
-			KalmanAxis_UpdateVel(&kf_y, flow_vy, 0.05);
+			KalmanAxis_UpdateVel(&kf_x, flow_vx, 0.1);
+			KalmanAxis_UpdateVel(&kf_y, flow_vy, 0.1);
 		}
 	}
 
@@ -310,10 +310,15 @@ void Run_XY_Controller(float dt_val) {
 	target_vx = PID_Calculate(&PID_Pos_X, err_x, dt_val);
 	target_vy = PID_Calculate(&PID_Pos_Y, err_y, dt_val);
 
-	target_vx = constrain(target_vx, -MAX_NAV_SPEED - 1.0f,
-	MAX_NAV_SPEED + 1.0f);
-	target_vy = constrain(target_vy, -MAX_NAV_SPEED - 1.0f,
-	MAX_NAV_SPEED + 1.0f);
+	// GPS
+//	target_vx = constrain(target_vx, -MAX_NAV_SPEED - 1.0f,
+//	MAX_NAV_SPEED + 1.0f);
+//	target_vy = constrain(target_vy, -MAX_NAV_SPEED - 1.0f,
+//	MAX_NAV_SPEED + 1.0f);
+
+	// OPTICAL FLOW
+	target_vx = constrain(target_vx, -2.0f, 2.0f);
+	target_vy = constrain(target_vy, -2.0f, 2.0f);
 
 	float err_vx = target_vx - est_vx;
 	float err_vy = target_vy - est_vy;
@@ -525,6 +530,18 @@ void Landing_Init(void) {
 	landing_touchdown_time = 0;
 }
 
+void Poshold_Init() {
+	target_x = est_x;
+	target_y = est_y;
+	target_yaw = yaw;
+	target_alt = kf_4d.altitude;
+	PID_Reset(&PID_Pos_X);
+	PID_Reset(&PID_Pos_Y);
+	PID_Reset(&PID_Vel_X);
+	PID_Reset(&PID_Vel_Y);
+	PID_Reset(&PID_Alt_Pos);
+	PID_Reset(&PID_Alt_Vel);
+}
 void FlightMode_Execute(float dt_val) {
 
 	switch (flight_mode) {
@@ -533,8 +550,8 @@ void FlightMode_Execute(float dt_val) {
 		break;
 	}
 	case MODE_DISARM: {
-		if(throttle >1010)
-			throttle -=5;
+		if (throttle > 1010)
+			throttle -= 5;
 		pid_alt = 0;
 		PID_Reset(&PID_Rate_Pitch);
 		PID_Reset(&PID_Rate_Roll);
@@ -590,8 +607,8 @@ void FlightMode_Execute(float dt_val) {
 		} else {
 			takeoff_stable_time = 0;
 		}
-		if(HAL_GetTick() - takeoff_pre_time > 8000)	// cất cánh lâu quá thì cho poshold tại đó luôn;
-		{
+		if (HAL_GetTick() - takeoff_pre_time > 8000)// cất cánh lâu quá thì cho poshold tại đó luôn;
+				{
 			flight_mode = MODE_POSHOLD;
 		}
 		break;
@@ -649,8 +666,7 @@ void FlightMode_Execute(float dt_val) {
 		break;
 	}
 
-	case MODE_MANUAL:
-	{
+	case MODE_MANUAL: {
 		throttle = throttle_rx;
 		break;
 	}
