@@ -60,6 +60,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdbool.h>
+
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -171,15 +173,10 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size) {
 		MTF01_UART_RxEventCallback(huart, Size);
 	}
 
-	if (huart->Instance == UART7) // Đã chuyển sang UART7
-	{
+	if (huart->Instance == UART7) {
 		counttt++;
-		// Đẩy phần dữ liệu vừa nhận được vào module xử lý Mission
-		Mission_ParseChunk(rx_mission_buffer, Size);
-
-		// Khởi động lại DMA để tiếp tục đón mẻ dữ liệu mới từ ESP32
-		HAL_UARTEx_ReceiveToIdle_DMA(&huart7, rx_mission_buffer,
-		MISSION_BUFFER_SIZE);
+		// Gọi trực tiếp hàm xử lý đã đóng gói trong mission.c
+		Mission_UartRxHandler(huart, Size);
 	}
 }
 
@@ -187,6 +184,7 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart) {
 	// Kiểm tra xem lỗi có xuất phát từ UART của GPS không
 	GPS_UART_ErrorCallback(huart);
 	MTF01_UART_ErrorCallback(huart);
+	Mission_UART_ErrorCallback(huart);
 }
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
@@ -208,6 +206,8 @@ void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c) {
 //	HAL_I2C_Init(hi2c);
 	DSP310_I2C_ErrorCallback(hi2c);
 }
+
+
 
 /* USER CODE END 0 */
 
@@ -300,9 +300,9 @@ int main(void) {
 	FlightControl_Init();
 	PosHold_Init();
 
-	Mission_Init();
-	HAL_UARTEx_ReceiveToIdle_DMA(&huart7, rx_mission_buffer,
-	MISSION_BUFFER_SIZE);
+	Mission_UART_Init(&huart7);
+//	HAL_UARTEx_ReceiveToIdle_DMA(&huart7, rx_mission_buffer,
+//			MISSION_BUFFER_SIZE);
 
 	if (!DSP310_Init(&dsp_sensor, &hi2c1)) {
 		Serial_printf(&huart1, "DSP Init Failed!\r\n");
@@ -387,17 +387,15 @@ int main(void) {
 
 		PID_Task(dt);
 		mixer();
-		if (DWT_GetMicros() - ina219_timer > 500000) {
+		if (DWT_GetMicros() - ina219_timer > 1000000) {
 			float voltage = INA219_Read_Bus_Voltage(&hi2c2);
 			if (voltage >= 0.0f) {
 				txData.battery = voltage;
 			}
 			ina219_timer = DWT_GetMicros();
 		}
-		if (DWT_GetMicros() - esp_timer > 1000000) {
-			static char tx_buf[64];
-			sprintf(tx_buf, "POS,%.7f,%.7f\n", gps.latitude, gps.longitude);
-			HAL_UART_Transmit_DMA(&huart7, (uint8_t*) tx_buf, strlen(tx_buf));
+		if (DWT_GetMicros() - esp_timer > 2000000) {
+			Mission_SendTelemetry();
 			esp_timer = DWT_GetMicros();
 		}
 //		if (gps.fixType == 3 && gps.numSV > 20 && mission_running) // 3d fix and min 20 satelites

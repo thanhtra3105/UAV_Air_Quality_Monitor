@@ -63,6 +63,8 @@ extern uint8_t takeoff_active, takeoff_complete;
 extern uint8_t landing_active, landing_complete;
 extern float target_pitch_body, target_roll_body;
 
+extern float takeoff_target_alt;
+
 /* ================= FUNCTION PROTOTYPES ================= */
 void PosHold_Init(void);
 void Estimate_Position_Kalman(float dt);

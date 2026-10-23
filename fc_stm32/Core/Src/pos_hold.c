@@ -65,6 +65,8 @@ static uint32_t takeoff_pre_time = 0;
 
 static uint32_t wp_reach_time = 0; // Biến bấm giờ khi chạm đến Waypoint
 
+float takeoff_target_alt = 150.0f; // Mặc định 150cm (1.5m)
+
 /* ================= INITIALIZATION ================= */
 void PosHold_Init(void) {
 	KalmanAxis_Init(&kf_x);
@@ -537,12 +539,26 @@ void Poshold_Init() {
 	target_y = est_y;
 	target_yaw = yaw;
 	target_alt = kf_4d.altitude;
-	if (throttle_rx > 1150 && throttle_rx < 1850) {
-		throttle_hover = throttle_rx; // Nhớ mức ga thực tế lúc đang bay
+
+	// Xử lý ga hover thông minh & an toàn:
+	// 1. Nếu đang bay bằng tay với mức ga thực tế lơ lửng -> Nhớ mức ga tay
+	if (throttle_rx > 1250 && throttle_rx < 1850) {
+		throttle_hover = throttle_rx;
 	}
-//	else {
-//		throttle_hover = HOVER_THROTTLE_BASE;
-//	}
+	// 2. Nếu cất cánh tự động (tay ga = 1000) nhưng drone đang bay lơ lửng (throttle > 1300) -> Giữ mức ga đang bay
+	else if (throttle > 1300 && throttle < 1850) {
+		throttle_hover = throttle;
+	}
+	// 3. Mặc định dùng mức ga cân bằng cơ sở
+	else {
+		throttle_hover = (int)HOVER_THROTTLE_BASE;
+	}
+
+	// Tường lửa an toàn: Tuyệt đối không cho phép throttle_hover rơi vào khoảng nguy hiểm (< 1350)
+	if (throttle_hover < 1350 || throttle_hover > 1750) {
+		throttle_hover = (int)HOVER_THROTTLE_BASE;
+	}
+
 	PID_Reset(&PID_Pos_X);
 	PID_Reset(&PID_Pos_Y);
 	PID_Reset(&PID_Vel_X);
@@ -555,9 +571,30 @@ void Navigation_Init(void) {
 	target_x = est_x;
 	target_y = est_y;
 	target_yaw = yaw;
-	target_alt = kf_4d.altitude; // Chốt độ cao hiện tại
 	current_wp_index = 0;        // Bắt đầu từ Waypoint 0
-	wp_reach_time = 0; // Reset bộ đếm giờ
+	wp_reach_time = 0;           // Reset bộ đếm giờ
+
+	// Cập nhật độ cao mục tiêu từ Waypoint 0 nếu có cấu hình độ cao
+	if (Mission_GetCount() > 0) {
+		Waypoint_t wp0 = Mission_GetWaypoint(0);
+		if (wp0.alt > 0.5f) {
+			target_alt = wp0.alt * 100.0f; // Đổi m sang cm
+		} else {
+			target_alt = kf_4d.altitude;
+		}
+	} else {
+		target_alt = kf_4d.altitude;
+	}
+
+	// Đảm bảo ga hover an toàn
+	if (throttle_hover < 1350 || throttle_hover > 1750) {
+		if (throttle > 1300 && throttle < 1850) {
+			throttle_hover = throttle;
+		} else {
+			throttle_hover = (int)HOVER_THROTTLE_BASE;
+		}
+	}
+
 	PID_Reset(&PID_Pos_X);
 	PID_Reset(&PID_Pos_Y);
 	PID_Reset(&PID_Vel_X);
@@ -606,11 +643,12 @@ void FlightMode_Execute(float dt_val) {
 			takeoff_pre_time = HAL_GetTick();
 		}
 
-		// 2. Nâng dần target_alt theo tốc độ dốc
+				// 2. Nâng dần target_alt theo tốc độ dốc để cất cánh êm ái
 		target_alt += TAKEOFF_SPEED * dt_val;
-		if (target_alt >= TAKEOFF_TARGET_ALT) {
-			target_alt = TAKEOFF_TARGET_ALT;
+		if (target_alt >= takeoff_target_alt) {
+			target_alt = takeoff_target_alt;
 		}
+
 		// 3. Điều khiển Z (Cascade PID)
 		float err_z = target_alt - kf_4d.altitude;
 		target_vz = constrain(PID_Calculate(&PID_Alt_Pos, err_z, dt_val),
@@ -618,24 +656,27 @@ void FlightMode_Execute(float dt_val) {
 
 		float err_vz = target_vz - kf_4d.velocity;
 		pid_alt = PID_Calculate(&PID_Alt_Vel, err_vz, dt_val);
-		throttle = HOVER_THROTTLE_BASE;
-		// 4. Kiểm tra đạt độ cao mục tiêu -> Chuyển sang POSHOLD
-		if (fabsf(TAKEOFF_TARGET_ALT - kf_4d.altitude) < 15.0f
-				&& fabsf(kf_4d.velocity) < 15.0f) {	// dat sai so vi tri mong doi la 15cm va van toc luc do duoi 15cm/s2 thi xem takeoff thanh cong
+
+		// Tăng ga từ từ chống giật
+		if (throttle < HOVER_THROTTLE_BASE) {
+			throttle += 5;
+		}
+
+		// 4. Kiểm tra đạt độ cao mục tiêu (cm so với cm) -> Chuyển sang POSHOLD
+		if (fabsf(takeoff_target_alt - kf_4d.altitude) < 15.0f
+				&& fabsf(kf_4d.velocity) < 15.0f) {
 			if (takeoff_stable_time == 0) {
 				takeoff_stable_time = HAL_GetTick();
 			} else if (HAL_GetTick() - takeoff_stable_time > 400) { // Ổn định trong 400ms
-				// Chuyển sang PosHold thành công!
+				// CẤT CÁNH THÀNH CÔNG -> TỰ ĐỘNG CHUYỂN SANG POSHOLD!
 				flight_mode = MODE_POSHOLD;
+				Poshold_Init();
 			}
 		} else {
 			takeoff_stable_time = 0;
 		}
-		if (HAL_GetTick() - takeoff_pre_time > 8000)// cất cánh lâu quá thì cho poshold tại đó luôn;
-				{
-			flight_mode = MODE_POSHOLD;
-		}
 		break;
+
 	}
 	case MODE_POSHOLD: {
 		// Giữ vị trí XY
@@ -646,6 +687,9 @@ void FlightMode_Execute(float dt_val) {
 				-MAX_TARGET_VZ, MAX_TARGET_VZ);
 		float err_vz = target_vz - kf_4d.velocity;
 		pid_alt = PID_Calculate(&PID_Alt_Vel, err_vz, dt_val);
+		if (throttle_hover < 1350 || throttle_hover > 1750) {
+			throttle_hover = (int)HOVER_THROTTLE_BASE;
+		}
 		throttle = throttle_hover;
 		break;
 	}
@@ -762,6 +806,11 @@ void FlightMode_Execute(float dt_val) {
 
 				if (current_wp_index < Mission_GetCount() - 1) {
 					current_wp_index++;
+					// Cập nhật độ cao mục tiêu cho Waypoint mới (nếu có cấu hình)
+					Waypoint_t next_wp = Mission_GetWaypoint(current_wp_index);
+					if (next_wp.alt > 0.5f) {
+						target_alt = next_wp.alt * 100.0f;
+					}
 				} else {
 					// Đã dừng đủ 10s tại Waypoint cuối cùng -> Chuyển về POSHOLD neo vị trí
 					flight_mode = MODE_POSHOLD;
@@ -782,6 +831,9 @@ void FlightMode_Execute(float dt_val) {
 				-MAX_TARGET_VZ, MAX_TARGET_VZ);
 		float err_vz = target_vz - kf_4d.velocity;
 		pid_alt = PID_Calculate(&PID_Alt_Vel, err_vz, dt_val);
+		if (throttle_hover < 1350 || throttle_hover > 1750) {
+			throttle_hover = (int)HOVER_THROTTLE_BASE;
+		}
 		throttle = throttle_hover;
 		break;
 	}

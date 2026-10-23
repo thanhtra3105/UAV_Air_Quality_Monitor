@@ -15,4 +15,4 @@
 ../Core/Src/flight_control.c:394:6:calcualatePIDRate	1
 ../Core/Src/flight_control.c:419:6:PID_Task	2
 ../Core/Src/flight_control.c:429:6:Failsafe_Task	5
-../Core/Src/flight_control.c:447:6:RxController	16
+../Core/Src/flight_control.c:528:6:RxController	22

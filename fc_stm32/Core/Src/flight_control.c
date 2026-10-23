@@ -64,7 +64,7 @@ float target_rate_yaw = 0;
 // Motor & Throttle
 int throttle = 1000;
 int throttle_rx = 1000;
-int throttle_hover = 1000;
+int throttle_hover = (int)HOVER_THROTTLE_BASE;
 // Altitude
 float alt_offset = 0;
 float current_alt = 0;
@@ -444,84 +444,184 @@ void Failsafe_Task(void) {
 	}
 }
 
+// void RxController(void) {
+// 	if (NRF24_Available()) {
+// 		uint8_t len = NRF24_GetDynamicPayloadSize();
+
+// 		if (len == sizeof(ControlData)) {
+// 			NRF24_Read((uint8_t*) &rxData, len);
+// 			if (rxData.nut1) {
+// 				if (flight_mode == MODE_MANUAL) {
+// //					if (rxData.chinhtocdoquat >= DEADZONE_LOW
+// //							&& rxData.chinhtocdoquat <= DEADZONE_HIGH) {
+// //						flight_mode = MODE_TAKEOFF;
+// //						Takeoff_Init();
+// 					if (gps_home_set) {
+// 						flight_mode = MODE_POSHOLD;
+// 						Poshold_Init();
+// 					}
+// 				}
+
+// //					}
+
+// 				else if (flight_mode == MODE_POSHOLD) {
+// 					if (Mission_IsReady() && Mission_GetCount() > 0) {
+// 						flight_mode = MODE_NAVIGATION;
+// 						Navigation_Init();
+// 					}
+// 					if (rxData.nut2) {
+// 						flight_mode = MODE_LANDING;
+// 						Landing_Init();
+// 					}
+// 				} else if (flight_mode == MODE_LANDING) {
+// 					if (!rxData.nut2) {
+// 						flight_mode = MODE_POSHOLD;
+// 						target_alt = kf_4d.altitude; // Giữ nguyên độ cao lơ lửng
+// 					}
+// 				}
+// 			} else {	// nut 1 KO GAT
+
+// 				if (flight_mode == MODE_DISARM) {
+// 					if (rxData.chinhtocdoquat <= 1050) {
+// 						flight_mode = MODE_MANUAL;
+// 					} else {
+// 						flight_mode = MODE_DISARM;
+// 						throttle_rx = 1000;
+// 					}
+// 				} else {
+// 					// Nếu đang bay mà tắt nut1 -> Trả quyền điều khiển về MANUAL ngay lập tức!
+// 					flight_mode = MODE_MANUAL;
+// 				}
+// 				pos_hold_active = 0;
+// 				alt_hold = 0;
+// 			}
+
+// 			if (flight_mode == MODE_MANUAL) {
+// 				throttle_rx = rxData.chinhtocdoquat;
+// //				bool poshold_sw_active = rxData.nut1 && rxData.nut2;
+// //				if (!poshold_sw_active) {
+// 				target_roll = (float) map(rxData.trucX, 0, 100,
+// 						(long) MAX_TARGET_ROLL_PITCH,
+// 						(long) -MAX_TARGET_ROLL_PITCH);
+// 				target_pitch = (float) map(rxData.trucY, 0, 100,
+// 						(long) MAX_TARGET_ROLL_PITCH,
+// 						(long) -MAX_TARGET_ROLL_PITCH);
+// //				}
+// //				alt_hold = rxData.nut1;
+// 			}
+// 			timeout_connected = HAL_GetTick();
+// 		}
+// 		txData.lat = (int32_t) (gps.latitude * 1e7);
+// 		txData.lon = (int32_t) (gps.longitude * 1e7);
+// 		txData.x = est_x;
+// 		txData.y = est_y;
+// 		txData.alt = kf_4d.altitude;
+// 		txData.target_x = (flight_mode == MODE_POSHOLD);
+// 		txData.target_y = kf_4d.velocity;
+// 		NRF24_WriteAckPayload(0, (uint8_t*) &txData, sizeof(TelemetryData));
+// 	} else {
+
+// 		Failsafe_Task();
+// 	}
+// }
+
 void RxController(void) {
+	static bool rc_connected = false;
+
+	// 1. ================= NHẬN DỮ LIỆU TỪ TAY CẦM NRF24 =================
 	if (NRF24_Available()) {
 		uint8_t len = NRF24_GetDynamicPayloadSize();
-
 		if (len == sizeof(ControlData)) {
 			NRF24_Read((uint8_t*) &rxData, len);
-			if (rxData.nut1) {
-				if (flight_mode == MODE_MANUAL) {
-//					if (rxData.chinhtocdoquat >= DEADZONE_LOW
-//							&& rxData.chinhtocdoquat <= DEADZONE_HIGH) {
-//						flight_mode = MODE_TAKEOFF;
-//						Takeoff_Init();
-					if (gps_home_set) {
-						flight_mode = MODE_POSHOLD;
-						Poshold_Init();
-					}
-				}
+			timeout_connected = HAL_GetTick();
+			rc_connected = true;
 
-//					}
-
-				else if (flight_mode == MODE_POSHOLD) {
-					if (Mission_IsReady() && Mission_GetCount() > 0) {
-						flight_mode = MODE_NAVIGATION;
-						Navigation_Init();
-					}
-					if (rxData.nut2) {
-						flight_mode = MODE_LANDING;
-						Landing_Init();
-					}
-				} else if (flight_mode == MODE_LANDING) {
-					if (!rxData.nut2) {
-						flight_mode = MODE_POSHOLD;
-						target_alt = kf_4d.altitude; // Giữ nguyên độ cao lơ lửng
-					}
-				}
-			} else {	// nut 1 KO GAT
-
-				if (flight_mode == MODE_DISARM) {
-					if (rxData.chinhtocdoquat <= 1050) {
-						flight_mode = MODE_MANUAL;
-					} else {
-						flight_mode = MODE_DISARM;
-						throttle_rx = 1000;
-					}
-				} else {
-					// Nếu đang bay mà tắt nut1 -> Trả quyền điều khiển về MANUAL ngay lập tức!
-					flight_mode = MODE_MANUAL;
-				}
-				pos_hold_active = 0;
-				alt_hold = 0;
-			}
-
+			// Lái tay khi ở MODE_MANUAL
 			if (flight_mode == MODE_MANUAL) {
 				throttle_rx = rxData.chinhtocdoquat;
-//				bool poshold_sw_active = rxData.nut1 && rxData.nut2;
-//				if (!poshold_sw_active) {
 				target_roll = (float) map(rxData.trucX, 0, 100,
 						(long) MAX_TARGET_ROLL_PITCH,
 						(long) -MAX_TARGET_ROLL_PITCH);
 				target_pitch = (float) map(rxData.trucY, 0, 100,
 						(long) MAX_TARGET_ROLL_PITCH,
 						(long) -MAX_TARGET_ROLL_PITCH);
-//				}
-//				alt_hold = rxData.nut1;
 			}
-			timeout_connected = HAL_GetTick();
-		}
-		txData.lat = (int32_t) (gps.latitude * 1e7);
-		txData.lon = (int32_t) (gps.longitude * 1e7);
-		txData.x = est_x;
-		txData.y = est_y;
-		txData.alt = kf_4d.altitude;
-		txData.target_x = (flight_mode == MODE_POSHOLD);
-		txData.target_y = kf_4d.velocity;
-		NRF24_WriteAckPayload(0, (uint8_t*) &txData, sizeof(TelemetryData));
-	} else {
 
-		Failsafe_Task();
+			// Gửi Telemetry ngược lại cho Tay cầm
+			txData.lat = (int32_t) (gps.latitude * 1e7);
+			txData.lon = (int32_t) (gps.longitude * 1e7);
+			txData.x = est_x;
+			txData.y = est_y;
+			txData.alt = kf_4d.altitude;
+			txData.target_x = (flight_mode == MODE_POSHOLD || flight_mode == MODE_NAVIGATION);
+			txData.target_y = kf_4d.velocity;
+			NRF24_WriteAckPayload(0, (uint8_t*) &txData, sizeof(TelemetryData));
+		}
+	} else {
+		// Mất sóng tay cầm > 500ms
+		if (HAL_GetTick() - timeout_connected > 500) {
+			rc_connected = false;
+			// Chỉ kích hoạt Failsafe nếu đang tự lái bằng tay
+			if (flight_mode == MODE_MANUAL) {
+				Failsafe_Task();
+			}
+		}
+	}
+
+	// 2. ================= QUẢN LÝ FLIGHT_MODE TỪ PI (CHẠY ĐỘC LẬP) =================
+	// Nếu có tay cầm và nut1 = 0 -> Ép về MANUAL (Emergency Override)
+	if (rc_connected && !rxData.nut1) {
+		if (flight_mode != MODE_DISARM) {
+			flight_mode = MODE_MANUAL;
+		}
+		pos_hold_active = 0;
+		alt_hold = 0;
+	} else {
+		// Khi nut1 = 1 HOẶC khi mất sóng tay cầm trong lúc đang bay AUTO:
+		// VẪN TIẾP TỤC LẮNG NGHE VÀ THI HÀNH LỆNH TỪ RASPBERRY PI BÌNH THƯỜNG!
+		const FlightControlState_t *fc = FlightControl_GetState();
+		static FlightMode_t last_fc_mode = MODE_DISARM;
+
+		if (fc->mode != last_fc_mode) {
+			flight_mode = fc->mode;
+
+			switch (flight_mode) {
+			case MODE_TAKEOFF:
+				if (gps_home_set) {
+					if (fc->target_alt > 0.0f) {
+						takeoff_target_alt = fc->target_alt * 100.0f; // Ví dụ: 3m -> 300cm
+					}
+					Takeoff_Init(); // Bắt đầu target_alt từ mặt đất và nâng dần lên
+				}
+				break;
+
+
+			case MODE_POSHOLD:
+				Poshold_Init();
+				break;
+
+			case MODE_NAVIGATION:
+				if (gps_home_set && Mission_GetCount() > 0) {
+					Navigation_Init();
+					if (fc->target_alt > 0.0f) {
+						target_alt = fc->target_alt * 100.0f;
+					}
+				}
+				break;
+
+			case MODE_LANDING:
+				Landing_Init();
+				break;
+
+			case MODE_DISARM:
+				throttle_rx = 1000;
+				break;
+
+			default:
+				break;
+			}
+
+			last_fc_mode = fc->mode;
+		}
 	}
 }
-
