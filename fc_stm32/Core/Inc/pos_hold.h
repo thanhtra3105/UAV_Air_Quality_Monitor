@@ -29,9 +29,9 @@
 #define MAX_ACCEL_BIAS      1.0f
 
 #define WAYPOINT_RADIUS     2.0f     // Bán kính xác nhận đến điểm (m)
-#define MAX_NAV_SPEED       5.0f     // Tốc độ di chuyển tối đa (m/s)
+#define MAX_NAV_SPEED       2.0f     // Tốc độ di chuyển tối đa (m/s)
 #define LANDING_SPEED       20.0f    // Tốc độ hạ cánh (cm/s)
-
+#define WAYPOINT_HOLD_TIME  10000    // Thời gian dừng lại tại mỗi điểm: 10 giây (10000 ms)
 /* ================= EXTERN STATE VARIABLES ================= */
 // Gia tốc & Bias trong Earth Frame
 extern float ax_earth, ay_earth;

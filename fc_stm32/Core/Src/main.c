@@ -315,7 +315,7 @@ int main(void) {
 		HAL_Delay(1);
 	}
 	float h = dsp_sensor.altitude;
-	Kalman4D_Init(&kf_4d, (h - alt_offset)*100);
+	Kalman4D_Init(&kf_4d, (h - alt_offset) * 100);
 
 	calibIMU();
 
@@ -334,8 +334,11 @@ int main(void) {
 	}
 //	NRF24_WriteAckPayload(0, &txData, sizeof(TelemetryData));		// thong bao da ket noi thanh cong voi tx
 
+//	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2, 0);
 	uint32_t ina219_timer = 0;
 	uint32_t esp_timer = 0;
+
+	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2, 0);
 	Serial_printf(&huart1, "[OK] START\r\n");
 	/* USER CODE END 2 */
 
@@ -397,12 +400,10 @@ int main(void) {
 			HAL_UART_Transmit_DMA(&huart7, (uint8_t*) tx_buf, strlen(tx_buf));
 			esp_timer = DWT_GetMicros();
 		}
-
-		if (gps.fixType == 3 && gps.numSV > 20 && mission_running) // 3d fix and min 20 satelites
-			HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2, 1);
-		else
-			HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2, 0);
-
+//		if (gps.fixType == 3 && gps.numSV > 20 && mission_running) // 3d fix and min 20 satelites
+//			HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2, 1);
+//		else
+//			HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2, 0);
 		while ((DWT_GetMicros() - start) < 2000)
 			;
 //		float time = DWT_GetMicros() - start;

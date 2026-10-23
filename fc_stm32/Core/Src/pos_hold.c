@@ -63,6 +63,8 @@ static uint32_t takeoff_stable_time = 0;
 static uint32_t landing_touchdown_time = 0;
 static uint32_t takeoff_pre_time = 0;
 
+static uint32_t wp_reach_time = 0; // Biến bấm giờ khi chạm đến Waypoint
+
 /* ================= INITIALIZATION ================= */
 void PosHold_Init(void) {
 	KalmanAxis_Init(&kf_x);
@@ -311,14 +313,14 @@ void Run_XY_Controller(float dt_val) {
 	target_vy = PID_Calculate(&PID_Pos_Y, err_y, dt_val);
 
 	// GPS
-//	target_vx = constrain(target_vx, -MAX_NAV_SPEED - 1.0f,
-//	MAX_NAV_SPEED + 1.0f);
-//	target_vy = constrain(target_vy, -MAX_NAV_SPEED - 1.0f,
-//	MAX_NAV_SPEED + 1.0f);
+	target_vx = constrain(target_vx, -MAX_NAV_SPEED - 1.0f,
+	MAX_NAV_SPEED + 1.0f);
+	target_vy = constrain(target_vy, -MAX_NAV_SPEED - 1.0f,
+	MAX_NAV_SPEED + 1.0f);
 
 	// OPTICAL FLOW
-	target_vx = constrain(target_vx, -2.0f, 2.0f);
-	target_vy = constrain(target_vy, -2.0f, 2.0f);
+//	target_vx = constrain(target_vx, -1.2f, 1.2f);
+//	target_vy = constrain(target_vy, -1.2f, 1.2f);
 
 	float err_vx = target_vx - est_vx;
 	float err_vy = target_vy - est_vy;
@@ -555,7 +557,7 @@ void Navigation_Init(void) {
 	target_yaw = yaw;
 	target_alt = kf_4d.altitude; // Chốt độ cao hiện tại
 	current_wp_index = 0;        // Bắt đầu từ Waypoint 0
-
+	wp_reach_time = 0; // Reset bộ đếm giờ
 	PID_Reset(&PID_Pos_X);
 	PID_Reset(&PID_Pos_Y);
 	PID_Reset(&PID_Vel_X);
@@ -690,15 +692,47 @@ void FlightMode_Execute(float dt_val) {
 
 	case MODE_MANUAL: {
 		throttle = throttle_rx;
+		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2, 0);
 		break;
+
 	}
 	case MODE_NAVIGATION: {
+
+		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2, 1);		// sáng led để biết
+
 		Waypoint_t current_wp = Mission_GetWaypoint(current_wp_index);
-		float wp_lat_err = (float) current_wp.lat - home_lat;
-		float wp_lon_err = (float) current_wp.lon - home_lon;
+		float wp_lat_err = (float) (current_wp.lat - home_lat);
+		float wp_lon_err = (float) (current_wp.lon - home_lon);
 		float wp_target_x = wp_lat_err * 111320.0f;
 		float wp_target_y = wp_lon_err * 111320.0f
 				* cosf(home_lat * DEG_TO_RAD);
+
+		// Khoảng cách từ Drone đến Waypoint
+		float dx_drone = wp_target_x - est_x;
+		float dy_drone = wp_target_y - est_y;
+		float dist_to_wp = sqrtf(dx_drone * dx_drone + dy_drone * dy_drone);
+
+		// ================= XOAY MŨI HƯỚNG VỀ WAYPOINT =================
+		if (dist_to_wp > 1.0f) { // Chỉ quay mũi khi cách xa waypoint > 1.5m
+			float desired_yaw = atan2f(dy_drone, dx_drone) * RAD_TO_DEG;
+
+			// Tính độ lệch ngắn nhất giữa góc mong muốn và target_yaw hiện tại
+			float yaw_diff = angle_diff(desired_yaw, target_yaw);
+
+			// Giới hạn tốc độ quay mũi tối đa 60 độ/giây để máy bay xoay êm dịu
+			float max_yaw_step = 40.0f * dt_val;
+			if (yaw_diff > max_yaw_step)
+				yaw_diff = max_yaw_step;
+			if (yaw_diff < -max_yaw_step)
+				yaw_diff = -max_yaw_step;
+
+			target_yaw += yaw_diff;
+			if (target_yaw > 180.0f)
+				target_yaw -= 360.0f;
+			if (target_yaw < -180.0f)
+				target_yaw += 360.0f;
+		}
+
 		// S-Curve Carrot Chasing
 		float dx_carrot = wp_target_x - target_x;
 		float dy_carrot = wp_target_y - target_y;
@@ -716,18 +750,28 @@ void FlightMode_Execute(float dt_val) {
 			target_x += dir_x * current_speed * dt_val;
 			target_y += dir_y * current_speed * dt_val;
 		}
-		float dx_drone = wp_target_x - est_x;
-		float dy_drone = wp_target_y - est_y;
-		float dist_to_wp = sqrtf(dx_drone * dx_drone + dy_drone * dy_drone);
+
+		// Kiểm tra hoàn thành Waypoint
+		// ================= KIỂM TRA ĐẾN WAYPOINT & DỪNG LẠI 10 GIÂY =================
 		if (dist_to_wp < WAYPOINT_RADIUS) {
-			if (current_wp_index < Mission_GetCount() - 1) {
-				current_wp_index++;
-			} else {
-				// Đã hết danh sách Waypoint -> Tự động chuyển về POSHOLD neo tại điểm cuối
-				flight_mode = MODE_POSHOLD;
-				Poshold_Init();      // Chốt neo tại vị trí hiện tại
-				Mission_Init();
+			if (wp_reach_time == 0) {
+				wp_reach_time = HAL_GetTick(); // Bắt đầu bấm giờ khi vừa chạm bán kính Waypoint
+			} else if (HAL_GetTick() - wp_reach_time >= WAYPOINT_HOLD_TIME) {
+				// Đã đứng yên đủ 10 giây -> Chuyển sang điểm tiếp theo
+				wp_reach_time = 0; // Reset bộ đếm giờ cho điểm tiếp theo
+
+				if (current_wp_index < Mission_GetCount() - 1) {
+					current_wp_index++;
+				} else {
+					// Đã dừng đủ 10s tại Waypoint cuối cùng -> Chuyển về POSHOLD neo vị trí
+					flight_mode = MODE_POSHOLD;
+					Poshold_Init();
+					Mission_Init();
+				}
 			}
+		} else {
+			// Nếu chưa tới hoặc bị gió thổi dạt ra ngoài bán kính thì reset lại đếm giờ
+			wp_reach_time = 0;
 		}
 
 		// 1. Điều khiển bám vị trí XY (Carrot point)
@@ -738,9 +782,10 @@ void FlightMode_Execute(float dt_val) {
 				-MAX_TARGET_VZ, MAX_TARGET_VZ);
 		float err_vz = target_vz - kf_4d.velocity;
 		pid_alt = PID_Calculate(&PID_Alt_Vel, err_vz, dt_val);
-		throttle = HOVER_THROTTLE_BASE;
+		throttle = throttle_hover;
 		break;
 	}
+
 	default:
 		pid_alt = 0;
 		break;

@@ -101,7 +101,7 @@ PIDController_t PID_Vel_Y;
 float kp_angle = 6.5f, ki_angle = 0.0f, kd_angle = 0.0f;
 float kp_r = 0.85f, ki_r = 1.0f, kd_r = 0.003f;
 float kp_p = 0.85f, ki_p = 1.0f, kd_p = 0.003f;
-float kp_y = 0.9f, ki_y = 0.5f, kd_y = 0.005f;
+float kp_y = 1.0f, ki_y = 1.0f, kd_y = 0.00f;
 
 float kp_alt = 3.0f, ki_alt = 0.0f, kd_alt = 0.5f;
 float kp_alt_pos = 2.0f, ki_alt_pos = 0.0f, kd_alt_pos = 0.0f;	// Use DSP310
@@ -110,8 +110,8 @@ float kp_alt_vel = 1.0f, ki_alt_vel = 0.2f, kd_alt_vel = 0.003f;
 //float kp_xy_pos = 1.2f, ki_xy_pos = 0.0f, kd_xy_pos = 0.0f; // MTF01
 //float kp_xy_vel = 4.0f, ki_xy_vel = 0.1f, kd_xy_vel = 0.1f;
 /*	GPS*/
-float kp_xy_pos = 0.4f, ki_xy_pos = 0.0f, kd_xy_pos = 0.0f;
-float kp_xy_vel = 4.0f, ki_xy_vel = 0.0f, kd_xy_vel = 0.2f;
+float kp_xy_pos = 0.5f, ki_xy_pos = 0.0f, kd_xy_pos = 0.0f;
+float kp_xy_vel = 2.0f, ki_xy_vel = 0.0f, kd_xy_vel = 0.0f;
 
 /* ================= INITIALIZATION ================= */
 void FlightControl_Init(void) {
@@ -121,6 +121,7 @@ void FlightControl_Init(void) {
 	PID_Init(&PID_Rate_Roll, kp_r, ki_r, kd_r, 0.2f);
 	PID_SetIntegralLimits(&PID_Rate_Roll, -60.0f, 60.0f);
 	PID_Init(&PID_Rate_Yaw, kp_y, ki_y, kd_y, 0.2f);
+	PID_SetIntegralLimits(&PID_Rate_Yaw, -60.0f, 60.0f);
 
 	PID_Init(&PID_Alt, kp_alt, ki_alt, kd_alt, 0.2f);
 	PID_Init(&PID_Alt_Pos, kp_alt_pos, ki_alt_pos, kd_alt_pos, 0.2f);
