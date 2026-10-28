@@ -671,6 +671,7 @@ void FlightMode_Execute(float dt_val) {
 				// CẤT CÁNH THÀNH CÔNG -> TỰ ĐỘNG CHUYỂN SANG POSHOLD!
 				flight_mode = MODE_POSHOLD;
 				Poshold_Init();
+				FlightControl_SetMode(MODE_POSHOLD);
 			}
 		} else {
 			takeoff_stable_time = 0;
@@ -815,7 +816,7 @@ void FlightMode_Execute(float dt_val) {
 					// Đã dừng đủ 10s tại Waypoint cuối cùng -> Chuyển về POSHOLD neo vị trí
 					flight_mode = MODE_POSHOLD;
 					Poshold_Init();
-					Mission_Init();
+					Mission_Complete(); // Chuyển fc_state sang POSHOLD, KHÔNG disarm!
 				}
 			}
 		} else {

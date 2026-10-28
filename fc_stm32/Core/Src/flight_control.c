@@ -232,8 +232,8 @@ float readHeading(float roll_deg, float pitch_deg) {
 #else
 	static float last_heading = 0.0f;
 	if (IST8310_Read(&hi2c2, &ist8310) == IST8310_OK) {
-		last_heading = computeHeading(ist8310.raw_y, -ist8310.raw_x,
-				-ist8310.raw_z, roll_deg, pitch_deg);
+		last_heading = computeHeading(ist8310.mag_y, -ist8310.mag_x,
+				-ist8310.mag_z, roll_deg, pitch_deg);
 	}
 	return last_heading;
 #endif
@@ -577,51 +577,63 @@ void RxController(void) {
 		pos_hold_active = 0;
 		alt_hold = 0;
 	} else {
+		// gat nut 1 de giu do cao:
+		if(rxData.nut1)
+		{
+			gps_home_set = 1;
+			if(gps_home_set)
+			{
+				flight_mode = MODE_POSHOLD;
+				Poshold_Init();
+			}
+		}
+
+
 		// Khi nut1 = 1 HOẶC khi mất sóng tay cầm trong lúc đang bay AUTO:
 		// VẪN TIẾP TỤC LẮNG NGHE VÀ THI HÀNH LỆNH TỪ RASPBERRY PI BÌNH THƯỜNG!
-		const FlightControlState_t *fc = FlightControl_GetState();
-		static FlightMode_t last_fc_mode = MODE_DISARM;
-
-		if (fc->mode != last_fc_mode) {
-			flight_mode = fc->mode;
-
-			switch (flight_mode) {
-			case MODE_TAKEOFF:
-				if (gps_home_set) {
-					if (fc->target_alt > 0.0f) {
-						takeoff_target_alt = fc->target_alt * 100.0f; // Ví dụ: 3m -> 300cm
-					}
-					Takeoff_Init(); // Bắt đầu target_alt từ mặt đất và nâng dần lên
-				}
-				break;
-
-
-			case MODE_POSHOLD:
-				Poshold_Init();
-				break;
-
-			case MODE_NAVIGATION:
-				if (gps_home_set && Mission_GetCount() > 0) {
-					Navigation_Init();
-					if (fc->target_alt > 0.0f) {
-						target_alt = fc->target_alt * 100.0f;
-					}
-				}
-				break;
-
-			case MODE_LANDING:
-				Landing_Init();
-				break;
-
-			case MODE_DISARM:
-				throttle_rx = 1000;
-				break;
-
-			default:
-				break;
-			}
-
-			last_fc_mode = fc->mode;
-		}
+//		const FlightControlState_t *fc = FlightControl_GetState();
+//		static FlightMode_t last_fc_mode = MODE_DISARM;
+//
+//		if (fc->mode != last_fc_mode) {
+//			flight_mode = fc->mode;
+//
+//			switch (flight_mode) {
+//			case MODE_TAKEOFF:
+//				if (gps_home_set) {
+//					if (fc->target_alt > 0.0f) {
+//						takeoff_target_alt = fc->target_alt * 100.0f; // Ví dụ: 3m -> 300cm
+//					}
+//					Takeoff_Init(); // Bắt đầu target_alt từ mặt đất và nâng dần lên
+//				}
+//				break;
+//
+//
+//			case MODE_POSHOLD:
+//				Poshold_Init();
+//				break;
+//
+//			case MODE_NAVIGATION:
+//				if (gps_home_set && Mission_GetCount() > 0) {
+//					Navigation_Init();
+//					if (fc->target_alt > 0.0f) {
+//						target_alt = fc->target_alt * 100.0f;
+//					}
+//				}
+//				break;
+//
+//			case MODE_LANDING:
+//				Landing_Init();
+//				break;
+//
+//			case MODE_DISARM:
+//				throttle_rx = 1000;
+//				break;
+//
+//			default:
+//				break;
+//			}
+//
+//			last_fc_mode = fc->mode;
+//		}
 	}
 }

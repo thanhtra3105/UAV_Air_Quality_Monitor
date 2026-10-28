@@ -46,11 +46,13 @@ void Mission_UART_ErrorCallback(UART_HandleTypeDef *huart);
 void Mission_UartRxHandler(UART_HandleTypeDef *huart, uint16_t Size);
 void Mission_ParseChunk(const uint8_t *data, uint16_t len);
 
-// 4. Các hàm Getter
+// 4. Các hàm Getter & Setter
 uint16_t Mission_GetCount(void);
 Waypoint_t Mission_GetWaypoint(uint16_t index);
 bool Mission_IsReady(void);
 const FlightControlState_t* FlightControl_GetState(void);
+void FlightControl_SetMode(FlightMode_t mode);
+void Mission_Complete(void);
 void Mission_SendTelemetry(void);
 
 #endif /* MISSION_H */

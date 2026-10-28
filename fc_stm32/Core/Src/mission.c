@@ -21,15 +21,12 @@ static uint8_t dma_rx_buf[MISSION_BUFFER_SIZE];
 static char line_buf[MAX_JSON_LINE_LEN];
 static uint16_t line_idx = 0;
 
-// Khởi tạo/Reset dữ liệu Mission (Tương thích với lệnh gọi ở pos_hold.c dòng 769)
+// Khởi tạo/Reset dữ liệu Mission
 void Mission_Init(void) {
     current_mission.count = 0;
     current_mission.is_receiving = false;
     current_mission.is_ready = false;
 
-    fc_state.is_armed = false;
-    fc_state.target_alt = 0.0f;
-    fc_state.mode = MODE_DISARM;
     fc_state.next_wp_target = 0;
     fc_state.mission_started = false;
 
@@ -260,6 +257,15 @@ bool Mission_IsReady(void) {
 
 const FlightControlState_t* FlightControl_GetState(void) {
     return &fc_state;
+}
+
+void FlightControl_SetMode(FlightMode_t mode) {
+    fc_state.mode = mode;
+}
+
+void Mission_Complete(void) {
+    fc_state.mode = MODE_POSHOLD;
+    fc_state.mission_started = false;
 }
 
 // Khôi phục lại UART DMA khi bị lỗi đường truyền (Overrun, Noise, Framing)

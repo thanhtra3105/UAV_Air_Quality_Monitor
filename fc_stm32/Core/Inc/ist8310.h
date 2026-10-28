@@ -29,14 +29,15 @@ extern "C" {
 #include "main.h"   /* Thay bằng "stm32f4xx_hal.h" (hoặc dòng STM32 tương ứng) nếu project không có main.h chung */
 
 /* ==================== Địa chỉ I2C ==================== */
-#define IST8310_I2C_ADDR            (0x0E << 1)   /* 0x1C, địa chỉ 8-bit dùng cho HAL_I2C_Mem_xxx */
-
+//#define IST8310_I2C_ADDR            0x18   /* 0x1C, địa chỉ 8-bit dùng cho HAL_I2C_Mem_xxx */
+#define IST8310_I2C_ADDR            0x1C
 /* ==================== Bản đồ thanh ghi ==================== */
 #define IST8310_REG_WAI              0x00   /* Who Am I */
 #define IST8310_WAI_VALUE            0x10
 
 #define IST8310_REG_STAT1            0x02   /* Bit0 = DRDY */
 #define IST8310_STAT1_DRDY           0x01
+#define IST8310_REG_GSTR        0x42   /* Thanh ghi cấu hình Filter */
 
 #define IST8310_REG_DATA_XL          0x03   /* 6 byte: XL,XH,YL,YH,ZL,ZH */
 
@@ -63,6 +64,8 @@ extern "C" {
 #define IST8310_ERROR_WAI            0x02
 #define IST8310_ERROR_TIMEOUT        0x03
 #define IST8310_BUSY                 0x04   /* Đang đo, chưa có dữ liệu mới - gọi lại ở vòng lặp sau */
+
+
 
 /* ==================== Kiểu dữ liệu ==================== */
 typedef struct
@@ -106,6 +109,7 @@ uint8_t IST8310_Init(I2C_HandleTypeDef *hi2c, IST8310_Data_t *magData);
  * @retval khác 0/4       Lỗi (xem các mã IST8310_ERROR_x)
  */
 uint8_t IST8310_Read(I2C_HandleTypeDef *hi2c, IST8310_Data_t *magData);
+void IST8310_Calibrate(I2C_HandleTypeDef *hi2c, uint32_t duration_ms);
 
 #ifdef __cplusplus
 }

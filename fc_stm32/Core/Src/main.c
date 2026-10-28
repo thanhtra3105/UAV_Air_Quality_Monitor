@@ -304,16 +304,16 @@ int main(void) {
 //	HAL_UARTEx_ReceiveToIdle_DMA(&huart7, rx_mission_buffer,
 //			MISSION_BUFFER_SIZE);
 
-	if (!DSP310_Init(&dsp_sensor, &hi2c1)) {
-		Serial_printf(&huart1, "DSP Init Failed!\r\n");
-	} else
-		Serial_printf(&huart1, "[OK] DSP Init Successful!\r\n");
-
-	alt_offset = DSP_CalibrationAltitude(10);	// Lấy 10 sample
-	// ĐỢI đến khi lấy được 1 mẫu hợp lệ thì mới khởi tạo Kalman
-	while (!DSP310_Read(&dsp_sensor)) {
-		HAL_Delay(1);
-	}
+//	if (!DSP310_Init(&dsp_sensor, &hi2c1)) {
+//		Serial_printf(&huart1, "DSP Init Failed!\r\n");
+//	} else
+//		Serial_printf(&huart1, "[OK] DSP Init Successful!\r\n");
+//
+//	alt_offset = DSP_CalibrationAltitude(10);	// Lấy 10 sample
+//	// ĐỢI đến khi lấy được 1 mẫu hợp lệ thì mới khởi tạo Kalman
+//	while (!DSP310_Read(&dsp_sensor)) {
+//		HAL_Delay(1);
+//	}
 	float h = dsp_sensor.altitude;
 	Kalman4D_Init(&kf_4d, (h - alt_offset) * 100);
 
@@ -339,6 +339,8 @@ int main(void) {
 	uint32_t esp_timer = 0;
 
 	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2, 0);
+	Serial_printf(&huart1, "[CALIB] IST8310\r\n");
+//	IST8310_Calibrate(&hi2c2, 60000);
 	Serial_printf(&huart1, "[OK] START\r\n");
 	/* USER CODE END 2 */
 

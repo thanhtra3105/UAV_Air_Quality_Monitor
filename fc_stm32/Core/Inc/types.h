@@ -24,6 +24,7 @@
 typedef struct {
 	uint16_t trucX;
 	uint16_t trucY;
+	uint16_t trucZ;
 	uint8_t trai;
 	uint8_t phai;
 	uint8_t len;
@@ -32,9 +33,6 @@ typedef struct {
 	uint8_t nut1;
 	uint8_t nut2;
 	uint16_t chinhtocdoquat;
-	uint8_t has_wp;
-	int32_t wp_lat;
-	int32_t wp_lon;
 } ControlData;
 
 typedef struct {
