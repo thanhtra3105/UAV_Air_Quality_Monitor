@@ -28,6 +28,8 @@ ICM20602_t imu;
 DSP310_t dsp_sensor;
 Kalman4D_t kf_4d;
 extern MTF01_t mtf_data;
+extern uint8_t mtf01_updated;
+
 extern FlightMode_t flight_mode;
 
 #ifdef USE_QMC5883
@@ -64,7 +66,7 @@ float target_rate_yaw = 0;
 // Motor & Throttle
 int throttle = 1000;
 int throttle_rx = 1000;
-int throttle_hover = (int)HOVER_THROTTLE_BASE;
+int throttle_hover = (int) HOVER_THROTTLE_BASE;
 // Altitude
 float alt_offset = 0;
 float current_alt = 0;
@@ -110,8 +112,8 @@ float kp_alt_vel = 1.0f, ki_alt_vel = 0.2f, kd_alt_vel = 0.003f;
 //float kp_xy_pos = 1.2f, ki_xy_pos = 0.0f, kd_xy_pos = 0.0f; // MTF01
 //float kp_xy_vel = 4.0f, ki_xy_vel = 0.1f, kd_xy_vel = 0.1f;
 /*	GPS*/
-float kp_xy_pos = 0.5f, ki_xy_pos = 0.0f, kd_xy_pos = 0.0f;
-float kp_xy_vel = 2.0f, ki_xy_vel = 0.0f, kd_xy_vel = 0.0f;
+float kp_xy_pos = 0.3f, ki_xy_pos = 0.0f, kd_xy_pos = 0.0f;
+float kp_xy_vel = 3.3f, ki_xy_vel = 0.0f, kd_xy_vel = 0.05f;
 
 /* ================= INITIALIZATION ================= */
 void FlightControl_Init(void) {
@@ -142,6 +144,11 @@ void writeMotor(uint8_t chanel, int16_t us) {
 	__HAL_TIM_SET_COMPARE(&htim3, chanel, us);
 }
 
+//int m1;
+//int m2;
+//int m3;
+//int m4;
+
 void mixer(void) {
 	int m1 = (int) (float) throttle - pid_p - pid_r + pid_y + pid_alt;
 	int m2 = (int) (float) throttle + pid_p - pid_r - pid_y + pid_alt;
@@ -149,6 +156,10 @@ void mixer(void) {
 	int m4 = (int) (float) throttle - pid_p + pid_r - pid_y + pid_alt;
 
 	if (throttle > 1040) {
+		m1 = constrain(m1, 1000, 1900);
+		m2 = constrain(m2, 1000, 1900);
+		m3 = constrain(m3, 1000, 1900);
+		m4 = constrain(m4, 1000, 1900);
 		writeMotor(M1, m1);
 		writeMotor(M2, m2);
 		writeMotor(M3, m3);
@@ -324,11 +335,28 @@ void calculateAngle(float dt_val) {
 	Kalman4D_Predict(&kf_4d, acc_z_filt, dt_val);
 	static float dsp310_alt_cm = 0;
 
-	if (DSP310_Read(&dsp_sensor)) {
-		dsp310_alt_cm = (dsp_sensor.altitude - alt_offset) * 100.0f;
-//		current_alt = dsp310_alt_cm;
-		Kalman4D_UpdateBaro(&kf_4d, dsp310_alt_cm);
-
+//	if (DSP310_Read(&dsp_sensor)) {
+//		dsp310_alt_cm = (dsp_sensor.altitude - alt_offset) * 100.0f;
+////		current_alt = dsp310_alt_cm;
+//		Kalman4D_UpdateBaro(&kf_4d, dsp310_alt_cm);
+//
+//		float range_raw_cm = mtf_data.distance / 10.0f;
+//		range_cm = MTF01_Median3(range_raw_cm);
+//		uint8_t tilt_valid = (fabsf(roll) < 25.0f) && (fabsf(pitch) < 25.0f);
+//		range_cm -= range_alt_offset;
+//		if (range_cm < 0)
+//			range_cm = 0;
+//		uint8_t distance_valid = (range_cm < 1200.0f);
+//		uint8_t range_valid = 1;
+//		if (range_valid && tilt_valid && distance_valid) {
+//			float roll_rad = roll * DEG_TO_RAD;
+//			float pitch_rad = pitch * DEG_TO_RAD;
+//			range_vertical_cm = range_cm * cosf(roll_rad) * cosf(pitch_rad);
+//			Kalman4D_UpdateRange(&kf_4d, range_vertical_cm, acc_z_filt);
+//		}
+//
+//	}
+	if (mtf01_updated) {
 		float range_raw_cm = mtf_data.distance / 10.0f;
 		range_cm = MTF01_Median3(range_raw_cm);
 		uint8_t tilt_valid = (fabsf(roll) < 25.0f) && (fabsf(pitch) < 25.0f);
@@ -343,8 +371,8 @@ void calculateAngle(float dt_val) {
 			range_vertical_cm = range_cm * cosf(roll_rad) * cosf(pitch_rad);
 			Kalman4D_UpdateRange(&kf_4d, range_vertical_cm, acc_z_filt);
 		}
-
 	}
+
 }
 
 /* ================= PID CONTROLLER CALCULATIONS ================= */
@@ -378,6 +406,29 @@ void calculatePIDAngle(float dt_angle) {
 
 	float roll_err = target_roll - roll;
 	target_rate_roll = PID_Calculate(&PID_Angle, roll_err, dt_angle);
+
+	if (throttle > 1050) {
+		float yaw_stick = (float) rxData.trucZ - 50.0f; // Điểm giữa là 50 (dải 0..100)
+		const float YAW_DEADZONE = 5.0f; // Vùng chết chống trôi tay cầm (45..55)
+		const float MAX_YAW_RATE = 60.0f; // Tốc độ quay tối đa: 90 độ/giây (có thể chỉnh 60 - 120)
+		if (yaw_stick > YAW_DEADZONE) {
+			float rate = ((yaw_stick - YAW_DEADZONE) / (50.0f - YAW_DEADZONE))
+					* MAX_YAW_RATE;
+			target_yaw += rate * dt_angle;
+		} else if (yaw_stick < -YAW_DEADZONE) {
+			float rate = ((yaw_stick + YAW_DEADZONE) / (50.0f - YAW_DEADZONE))
+					* MAX_YAW_RATE;
+			target_yaw += rate * dt_angle;
+		}
+		// Chuẩn hóa target_yaw luôn trong dải [-180.0, +180.0] độ
+		if (target_yaw > 180.0f)
+			target_yaw -= 360.0f;
+		if (target_yaw < -180.0f)
+			target_yaw += 360.0f;
+	} else {
+		// Khi chưa ga (ở mặt đất), khóa target_yaw theo góc thực tế để không bị lệch tích lũy
+		target_yaw = yaw;
+	}
 
 	float yaw_err = target_yaw - yaw;
 	if (yaw_err > 180.0f)
@@ -553,7 +604,8 @@ void RxController(void) {
 			txData.x = est_x;
 			txData.y = est_y;
 			txData.alt = kf_4d.altitude;
-			txData.target_x = (flight_mode == MODE_POSHOLD || flight_mode == MODE_NAVIGATION);
+			txData.target_x = (flight_mode == MODE_POSHOLD
+					|| flight_mode == MODE_NAVIGATION);
 			txData.target_y = kf_4d.velocity;
 			NRF24_WriteAckPayload(0, (uint8_t*) &txData, sizeof(TelemetryData));
 		}
@@ -571,23 +623,19 @@ void RxController(void) {
 	// 2. ================= QUẢN LÝ FLIGHT_MODE TỪ PI (CHẠY ĐỘC LẬP) =================
 	// Nếu có tay cầm và nut1 = 0 -> Ép về MANUAL (Emergency Override)
 	if (rc_connected && !rxData.nut1) {
-		if (flight_mode != MODE_DISARM) {
+		if (flight_mode != MODE_MANUAL && flight_mode != MODE_DISARM) {
 			flight_mode = MODE_MANUAL;
 		}
 		pos_hold_active = 0;
 		alt_hold = 0;
-	} else {
-		// gat nut 1 de giu do cao:
-		if(rxData.nut1)
-		{
-			gps_home_set = 1;
-			if(gps_home_set)
-			{
+	} else if (rxData.nut1) {
+		if (gps_home_set) {
+			// Chỉ khởi tạo 1 lần duy nhất khi bắt đầu vào chế độ PosHold
+			if (flight_mode != MODE_POSHOLD) {
 				flight_mode = MODE_POSHOLD;
 				Poshold_Init();
 			}
 		}
-
 
 		// Khi nut1 = 1 HOẶC khi mất sóng tay cầm trong lúc đang bay AUTO:
 		// VẪN TIẾP TỤC LẮNG NGHE VÀ THI HÀNH LỆNH TỪ RASPBERRY PI BÌNH THƯỜNG!

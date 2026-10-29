@@ -196,7 +196,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 
 // Callback khi nhận thành công qua I2C Interrupt
 void HAL_I2C_MemRxCpltCallback(I2C_HandleTypeDef *hi2c) {
-	DSP310_I2C_MemRxCpltCallback(hi2c);
+//	DSP310_I2C_MemRxCpltCallback(hi2c);
 }
 
 // Hàm cực kỳ quan trọng để chống giật/rơi máy bay khi lỏng dây
@@ -204,7 +204,7 @@ void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c) {
 	// Nếu có lỗi (như lỏng dây, mất ACK), ta reset lại khối I2C đó
 //	HAL_I2C_DeInit(hi2c);
 //	HAL_I2C_Init(hi2c);
-	DSP310_I2C_ErrorCallback(hi2c);
+//	DSP310_I2C_ErrorCallback(hi2c);
 }
 
 
