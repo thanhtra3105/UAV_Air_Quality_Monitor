@@ -1,6 +1,7 @@
-../Core/Src/ist8310.c:36:26:IST8310_WriteReg	32	static
-../Core/Src/ist8310.c:42:26:IST8310_ReadRegs	40	static
-../Core/Src/ist8310.c:49:16:IST8310_CombineLE	16	static
-../Core/Src/ist8310.c:58:16:IST8310_ComputeCompensationMatrix	128	static
-../Core/Src/ist8310.c:114:9:IST8310_Init	24	static
-../Core/Src/ist8310.c:161:9:IST8310_Read	40	static
+../Core/Src/ist8310.c:42:26:IST8310_WriteReg	32	static
+../Core/Src/ist8310.c:48:26:IST8310_ReadRegs	40	static
+../Core/Src/ist8310.c:55:16:IST8310_CombineLE	16	static
+../Core/Src/ist8310.c:62:19:IST8310_ComputeCompensationMatrix	128	static
+../Core/Src/ist8310.c:119:9:IST8310_Init	24	static
+../Core/Src/ist8310.c:155:9:IST8310_Read	40	static
+../Core/Src/ist8310.c:224:6:IST8310_Calibrate	40	static

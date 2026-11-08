@@ -196,7 +196,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 
 // Callback khi nhận thành công qua I2C Interrupt
 void HAL_I2C_MemRxCpltCallback(I2C_HandleTypeDef *hi2c) {
-//	DSP310_I2C_MemRxCpltCallback(hi2c);
+	DSP310_I2C_MemRxCpltCallback(hi2c);
 }
 
 // Hàm cực kỳ quan trọng để chống giật/rơi máy bay khi lỏng dây
@@ -204,7 +204,7 @@ void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c) {
 	// Nếu có lỗi (như lỏng dây, mất ACK), ta reset lại khối I2C đó
 //	HAL_I2C_DeInit(hi2c);
 //	HAL_I2C_Init(hi2c);
-//	DSP310_I2C_ErrorCallback(hi2c);
+	DSP310_I2C_ErrorCallback(hi2c);
 }
 
 
@@ -301,19 +301,19 @@ int main(void) {
 	PosHold_Init();
 
 	Mission_UART_Init(&huart7);
-//	HAL_UARTEx_ReceiveToIdle_DMA(&huart7, rx_mission_buffer,
-//			MISSION_BUFFER_SIZE);
+	HAL_UARTEx_ReceiveToIdle_DMA(&huart7, rx_mission_buffer,
+			MISSION_BUFFER_SIZE);
 
-//	if (!DSP310_Init(&dsp_sensor, &hi2c1)) {
-//		Serial_printf(&huart1, "DSP Init Failed!\r\n");
-//	} else
-//		Serial_printf(&huart1, "[OK] DSP Init Successful!\r\n");
-//
-//	alt_offset = DSP_CalibrationAltitude(10);	// Lấy 10 sample
-//	// ĐỢI đến khi lấy được 1 mẫu hợp lệ thì mới khởi tạo Kalman
-//	while (!DSP310_Read(&dsp_sensor)) {
-//		HAL_Delay(1);
-//	}
+	if (!DSP310_Init(&dsp_sensor, &hi2c1)) {
+		Serial_printf(&huart1, "DSP Init Failed!\r\n");
+	} else
+		Serial_printf(&huart1, "[OK] DSP Init Successful!\r\n");
+
+	alt_offset = DSP_CalibrationAltitude(10);	// Lấy 10 sample
+	// ĐỢI đến khi lấy được 1 mẫu hợp lệ thì mới khởi tạo Kalman
+	while (!DSP310_Read(&dsp_sensor)) {
+		HAL_Delay(1);
+	}
 	float h = dsp_sensor.altitude;
 	Kalman4D_Init(&kf_4d, (h - alt_offset) * 100);
 

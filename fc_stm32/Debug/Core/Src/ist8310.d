@@ -1,4 +1,4 @@
-Core/Src/ist8310.o: ../Core/Src/ist8310.c ../Core/Inc/IST8310.h \
+Core/Src/ist8310.o: ../Core/Src/ist8310.c ../Core/Inc/ist8310.h \
  ../Core/Inc/main.h ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal.h \
  ../Core/Inc/stm32h5xx_hal_conf.h \
  ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal_rcc.h \
@@ -33,7 +33,7 @@ Core/Src/ist8310.o: ../Core/Src/ist8310.c ../Core/Inc/IST8310.h \
  ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal_uart_ex.h \
  ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal_exti.h \
  ../Core/Inc/types.h
-../Core/Inc/IST8310.h:
+../Core/Inc/ist8310.h:
 ../Core/Inc/main.h:
 ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal.h:
 ../Core/Inc/stm32h5xx_hal_conf.h:
