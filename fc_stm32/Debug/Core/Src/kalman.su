@@ -15,3 +15,5 @@
 ../Core/Src/kalman.c:351:7:Kalman4D_getSigmaRange	40	static
 ../Core/Src/kalman.c:375:6:Kalman4D_UpdateBaro	48	static
 ../Core/Src/kalman.c:383:6:Kalman4D_UpdateRange	40	static
+../Core/Src/kalman.c:392:6:Kalman2D_UpdateBaro	24	static
+../Core/Src/kalman.c:398:6:Kalman2D_UpdateRange	32	static

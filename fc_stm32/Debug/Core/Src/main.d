@@ -25,6 +25,10 @@ Core/Src/main.o: ../Core/Src/main.c ../Core/Inc/main.h \
  ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal_i2c_ex.h \
  ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal_pwr.h \
  ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal_pwr_ex.h \
+ ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal_sd.h \
+ ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_ll_sdmmc.h \
+ ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_ll_dlyb.h \
+ ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal_sd_ex.h \
  ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal_spi.h \
  ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal_spi_ex.h \
  ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal_tim.h \
@@ -32,15 +36,19 @@ Core/Src/main.o: ../Core/Src/main.c ../Core/Inc/main.h \
  ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal_uart.h \
  ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal_uart_ex.h \
  ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal_exti.h \
- ../Core/Inc/types.h ../Core/Inc/types.h ../Core/Inc/flight_control.h \
- ../Core/Inc/main.h ../Core/Inc/pid_controller.h ../Core/Inc/kalman.h \
- ../Core/Inc/icm20602.h ../Core/Inc/dsp310.h ../Core/Inc/ist8310.h \
- ../Core/Inc/qmc5883.h ../Core/Inc/pos_hold.h ../Core/Inc/kalman_gps.h \
+ ../Core/Inc/types.h ../FileX/App/app_filex.h \
+ ../Middlewares/ST/filex/common/inc/fx_api.h \
+ ../Middlewares/ST/filex/ports/generic/inc/fx_port.h \
+ ../FileX/App/fx_user.h ../FileX/Target/fx_stm32_sd_driver.h \
+ ../Core/Inc/types.h ../Core/Inc/flight_control.h ../Core/Inc/main.h \
+ ../Core/Inc/pid_controller.h ../Core/Inc/kalman.h ../Core/Inc/icm20602.h \
+ ../Core/Inc/dsp310.h ../Core/Inc/ist8310.h ../Core/Inc/qmc5883.h \
+ ../Core/Inc/pos_hold.h ../Core/Inc/kalman_gps.h ../Core/Inc/mtf01.h \
+ ../Core/Inc/gps.h ../Core/Inc/mission.h ../Core/Inc/nrf.h \
+ ../Core/Inc/icm20602.h ../Core/Inc/dsp310.h ../Core/Inc/ina219.h \
  ../Core/Inc/mtf01.h ../Core/Inc/gps.h ../Core/Inc/mission.h \
- ../Core/Inc/nrf.h ../Core/Inc/icm20602.h ../Core/Inc/dsp310.h \
- ../Core/Inc/ina219.h ../Core/Inc/mtf01.h ../Core/Inc/gps.h \
- ../Core/Inc/mission.h ../Core/Inc/dwt.h ../Core/Src/serial.h \
- ../Core/Src/uart_cmd.h
+ ../Core/Inc/dwt.h ../Core/Src/serial.h ../Core/Src/uart_cmd.h \
+ ../Core/Inc/log.h
 ../Core/Inc/main.h:
 ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal.h:
 ../Core/Inc/stm32h5xx_hal_conf.h:
@@ -68,6 +76,10 @@ Core/Src/main.o: ../Core/Src/main.c ../Core/Inc/main.h \
 ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal_i2c_ex.h:
 ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal_pwr.h:
 ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal_pwr_ex.h:
+../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal_sd.h:
+../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_ll_sdmmc.h:
+../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_ll_dlyb.h:
+../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal_sd_ex.h:
 ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal_spi.h:
 ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal_spi_ex.h:
 ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal_tim.h:
@@ -76,6 +88,11 @@ Core/Src/main.o: ../Core/Src/main.c ../Core/Inc/main.h \
 ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal_uart_ex.h:
 ../Drivers/STM32H5xx_HAL_Driver/Inc/stm32h5xx_hal_exti.h:
 ../Core/Inc/types.h:
+../FileX/App/app_filex.h:
+../Middlewares/ST/filex/common/inc/fx_api.h:
+../Middlewares/ST/filex/ports/generic/inc/fx_port.h:
+../FileX/App/fx_user.h:
+../FileX/Target/fx_stm32_sd_driver.h:
 ../Core/Inc/types.h:
 ../Core/Inc/flight_control.h:
 ../Core/Inc/main.h:
@@ -100,3 +117,4 @@ Core/Src/main.o: ../Core/Src/main.c ../Core/Inc/main.h \
 ../Core/Inc/dwt.h:
 ../Core/Src/serial.h:
 ../Core/Src/uart_cmd.h:
+../Core/Inc/log.h:

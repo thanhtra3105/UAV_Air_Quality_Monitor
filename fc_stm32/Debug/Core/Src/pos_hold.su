@@ -12,4 +12,4 @@
 ../Core/Src/pos_hold.c:519:6:Landing_Init	8	static
 ../Core/Src/pos_hold.c:537:6:Poshold_Init	8	static
 ../Core/Src/pos_hold.c:570:6:Navigation_Init	40	static
-../Core/Src/pos_hold.c:606:6:FlightMode_Execute	192	static
+../Core/Src/pos_hold.c:606:6:FlightMode_Execute	200	static
