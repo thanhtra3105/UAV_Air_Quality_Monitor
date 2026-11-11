@@ -694,6 +694,19 @@ void FlightMode_Execute(float dt_val) {
 		throttle = throttle_hover;
 		break;
 	}
+	case MODE_ALTHOLD: {
+			// Giữ độ cao Z tại target_alt đã đạt được
+			float err_z = target_alt - kf_4d.altitude;
+			target_vz = constrain(PID_Calculate(&PID_Alt_Pos, err_z, dt_val),
+					-MAX_TARGET_VZ, MAX_TARGET_VZ);
+			float err_vz = target_vz - kf_4d.velocity;
+			pid_alt = PID_Calculate(&PID_Alt_Vel, err_vz, dt_val);
+			if (throttle_hover < 1350 || throttle_hover > 1750) {
+				throttle_hover = (int)HOVER_THROTTLE_BASE;
+			}
+			throttle = throttle_hover;
+			break;
+		}
 	case MODE_LANDING: {
 		if (kf_4d.altitude > 20) {
 			Run_XY_Controller(dt_val);

@@ -41,6 +41,7 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "app_filex.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -57,10 +58,10 @@
 #include "dwt.h"
 #include "serial.h"
 #include "uart_cmd.h"
+#include "log.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdbool.h>
-
 
 /* USER CODE END Includes */
 
@@ -86,6 +87,8 @@ I2C_HandleTypeDef hi2c1;
 I2C_HandleTypeDef hi2c2;
 DMA_HandleTypeDef handle_GPDMA2_Channel0;
 
+SD_HandleTypeDef hsd1;
+
 SPI_HandleTypeDef hspi1;
 SPI_HandleTypeDef hspi2;
 
@@ -101,7 +104,6 @@ DMA_HandleTypeDef handle_GPDMA2_Channel1;
 DMA_HandleTypeDef handle_GPDMA1_Channel0;
 DMA_HandleTypeDef handle_GPDMA1_Channel2;
 
-//extern QMC5883_t mag;
 /* USER CODE BEGIN PV */
 
 /* USER CODE END PV */
@@ -122,6 +124,7 @@ static void MX_ICACHE_Init(void);
 static void MX_UART7_Init(void);
 static void MX_TIM6_Init(void);
 static void MX_SPI2_Init(void);
+static void MX_SDMMC1_SD_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -136,6 +139,7 @@ MTF01_t mtf_data;
 uint8_t mtf01_updated = 0;
 uint8_t rx_mission_buffer[MISSION_BUFFER_SIZE];
 volatile uint8_t pid_flag = 0;
+FlightLogData_t log_data;
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 	if (huart->Instance == UART7) {
@@ -164,7 +168,6 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 //		HAL_UART_Receive_IT(&huart1, &rx_byte, 1);
 //	}
 }
-int counttt = 0;
 // Hàm Callback mặc định của HAL cho sự kiện Receive To IDLE
 void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size) {
 	// Đẩy sự kiện sang cho hàm xử lý của ta bên file gps.c
@@ -174,7 +177,6 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size) {
 	}
 
 	if (huart->Instance == UART7) {
-		counttt++;
 		// Gọi trực tiếp hàm xử lý đã đóng gói trong mission.c
 		Mission_UartRxHandler(huart, Size);
 	}
@@ -207,7 +209,88 @@ void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c) {
 	DSP310_I2C_ErrorCallback(hi2c);
 }
 
+// ================= TEST SD CARD =====
+UINT Test_SDCard_Write(void) {
+	UINT status;
+	static FX_MEDIA sdio_disk;
+	static FX_FILE my_file;
+	HAL_SD_CardInfoTypeDef CardInfo;
 
+	// Bộ đệm cho FileX Media (căn lề 32 bytes cho Cortex-M)
+	ALIGN_32BYTES(static uint8_t media_memory[FX_STM32_SD_DEFAULT_SECTOR_SIZE]);
+
+	// Bật ngắt SDMMC1
+	HAL_NVIC_SetPriority(SDMMC1_IRQn, 5, 0);
+	HAL_NVIC_EnableIRQ(SDMMC1_IRQn);
+
+	Serial_printf(&huart1, "\r\n[SD] Bat dau kiem tra the microSD...\r\n");
+
+	// 0. Kiểm tra thông tin phần cứng thẻ nhớ
+	if (HAL_SD_GetCardInfo(&hsd1, &CardInfo) == HAL_OK) {
+		uint32_t capacity_mb = (uint32_t) ((uint64_t) CardInfo.BlockNbr
+				* CardInfo.BlockSize / (1024 * 1024));
+		Serial_printf(&huart1,
+				"[SD HW] Nhan the thanh cong! Dung luong: %lu MB, BlockNbr: %lu\r\n",
+				capacity_mb, CardInfo.BlockNbr);
+	} else {
+		Serial_printf(&huart1, "[SD HW ERROR] Khong lay duoc CardInfo!\r\n");
+		return 1;
+	}
+
+	// 1. Mở thẻ nhớ
+	status = fx_media_open(&sdio_disk, "STM32_SD_DISK", fx_stm32_sd_driver,
+			(VOID *)FX_STM32_SD_INSTANCE, media_memory, sizeof(media_memory));
+
+	if (status != FX_SUCCESS) {
+		Serial_printf(&huart1,
+				"[SD ERROR] fx_media_open that bai! Ma loi: 0x%02X\r\n",
+				status);
+		return status;
+	}
+	Serial_printf(&huart1, "[SD] fx_media_open thanh cong!\r\n");
+
+	// 2. Tạo file test.txt
+	status = fx_file_create(&sdio_disk, "test.txt");
+	if (status != FX_SUCCESS && status != FX_ALREADY_CREATED) {
+		Serial_printf(&huart1,
+				"[SD ERROR] fx_file_create that bai! Ma loi: 0x%02X\r\n",
+				status);
+		fx_media_close(&sdio_disk);
+		return status;
+	}
+
+	// 3. Mở file để ghi
+	status = fx_file_open(&sdio_disk, &my_file, "test.txt", FX_OPEN_FOR_WRITE);
+	if (status != FX_SUCCESS) {
+		Serial_printf(&huart1,
+				"[SD ERROR] fx_file_open that bai! Ma loi: 0x%02X\r\n", status);
+		fx_media_close(&sdio_disk);
+		return status;
+	}
+
+	// Di chuyển con trỏ xuống cuối file
+	fx_file_seek(&my_file, my_file.fx_file_current_file_size);
+
+	// 4. Ghi dữ liệu
+	char write_buf[] =
+			"Hello STM32H5! Ghi file vao the nho qua FileX thanh cong!\r\n";
+	status = fx_file_write(&my_file, write_buf, strlen(write_buf));
+	if (status != FX_SUCCESS) {
+		Serial_printf(&huart1,
+				"[SD ERROR] fx_file_write that bai! Ma loi: 0x%02X\r\n",
+				status);
+	} else {
+		Serial_printf(&huart1, "[SD OK] Da ghi vao test.txt: %s", write_buf);
+	}
+
+	// 5. Đóng file và đẩy dữ liệu xuống chip nhớ
+	fx_file_close(&my_file);
+	fx_media_flush(&sdio_disk);
+	fx_media_close(&sdio_disk);
+
+	Serial_printf(&huart1, "[SD] Hoan tat test!\r\n");
+	return status;
+}
 
 /* USER CODE END 0 */
 
@@ -252,7 +335,10 @@ int main(void) {
 	MX_UART7_Init();
 	MX_TIM6_Init();
 	MX_SPI2_Init();
+	MX_SDMMC1_SD_Init();
+	MX_FileX_Init();
 	/* USER CODE BEGIN 2 */
+	// TEST SD CARD
 	HAL_TIM_PWM_Init(&htim3);
 	HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
 	HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_2);
@@ -261,13 +347,11 @@ int main(void) {
 
 	HAL_TIM_Base_Start_IT(&htim6);
 
-//	HAL_UART_Init(&huart7);
-//	Serial_Init(&huart1, 115200);
-//	UART_Command_Init(&huart7);
-//	MTF01_Init(&mtf01_handle, &huart2);
-//	GPS_Init(&huart1);
 	GPS_Init_DMA(&huart1);
 	MTF01_Init(&huart2);
+
+	// Khoi tao he thong ghi flight log vao the nho microSD (FAT32)
+	Log_Init();
 
 	HAL_I2C_Init(&hi2c1);
 	HAL_I2C_Init(&hi2c2);
@@ -302,7 +386,7 @@ int main(void) {
 
 	Mission_UART_Init(&huart7);
 	HAL_UARTEx_ReceiveToIdle_DMA(&huart7, rx_mission_buffer,
-			MISSION_BUFFER_SIZE);
+	MISSION_BUFFER_SIZE);
 
 	if (!DSP310_Init(&dsp_sensor, &hi2c1)) {
 		Serial_printf(&huart1, "DSP Init Failed!\r\n");
@@ -316,6 +400,7 @@ int main(void) {
 	}
 	float h = dsp_sensor.altitude;
 	Kalman4D_Init(&kf_4d, (h - alt_offset) * 100);
+	Kalman2D_Init(&kf_2d, (h - alt_offset) * 100);
 
 	calibIMU();
 
@@ -332,9 +417,6 @@ int main(void) {
 			}
 		}
 	}
-//	NRF24_WriteAckPayload(0, &txData, sizeof(TelemetryData));		// thong bao da ket noi thanh cong voi tx
-
-//	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2, 0);
 	uint32_t ina219_timer = 0;
 	uint32_t esp_timer = 0;
 
@@ -350,8 +432,11 @@ int main(void) {
 		/* USER CODE END WHILE */
 
 		/* USER CODE BEGIN 3 */
+		static uint32_t last_start = 0;
 		uint32_t start = DWT_GetMicros();
-//		uint32_t time_get = HAL_GetTick();
+//		float dt_loop = (last_start > 0) ? (float)(start - last_start) : 2000.0f;
+//		last_start = start;
+
 		dt = 0.002f;
 		RxController();
 		if (!yaw_hold_init && throttle > 1100) {
@@ -376,11 +461,6 @@ int main(void) {
 		mtf01_updated = MTF01_Update(&mtf_data);
 
 		GPS_Process(&gps);
-//		if (Mission_IsReady()) {
-////			char tx_buf[30];
-////			sprintf(tx_buf,"%d\r\n", Mission_GetCount() );
-////			HAL_UART_Transmit(&huart7, tx_buf, strlen(tx_buf), 20);
-//		}
 		readIMU();
 		calculateAngle(dt);
 		Estimate_Position_GPS_Kalman(dt);
@@ -400,12 +480,26 @@ int main(void) {
 			Mission_SendTelemetry();
 			esp_timer = DWT_GetMicros();
 		}
-//		if (gps.fixType == 3 && gps.numSV > 20 && mission_running) // 3d fix and min 20 satelites
-//			HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2, 1);
-//		else
-//			HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2, 0);
+
+		// ================= GHI LOG BENCHMARK VÀO RAM (50 Hz) =================
+		static uint8_t log_divider = 0;
+		if (++log_divider >= 10) // 500Hz / 10 = 50Hz (20ms/mẫu)
+				{
+			log_divider = 0;
+			log_data.time_ms = HAL_GetTick();
+			FLight_Control_Log();
+		}
+
+		// Tự động lưu xuống thẻ SD khi hạ cánh (throttle < 1030)
+		Log_Check_Auto_Save();
+		// =====================================================================
+
+		// In chu kỳ thực tế DT ra Python App (In trước dòng while để thời gian truyền UART được bù trừ trong 2000 us)
+
 		while ((DWT_GetMicros() - start) < 2000)
 			;
+//		Serial_printf(&huart1, "%f\r\n", DWT_GetMicros() - start);
+
 //		float time = DWT_GetMicros() - start;
 //		Serial_printf(&huart1, "%f\r\n", time);
 	}
@@ -643,6 +737,35 @@ static void MX_ICACHE_Init(void) {
 	/* USER CODE BEGIN ICACHE_Init 2 */
 
 	/* USER CODE END ICACHE_Init 2 */
+
+}
+
+/**
+ * @brief SDMMC1 Initialization Function
+ * @param None
+ * @retval None
+ */
+static void MX_SDMMC1_SD_Init(void) {
+
+	/* USER CODE BEGIN SDMMC1_Init 0 */
+
+	/* USER CODE END SDMMC1_Init 0 */
+
+	/* USER CODE BEGIN SDMMC1_Init 1 */
+
+	/* USER CODE END SDMMC1_Init 1 */
+	hsd1.Instance = SDMMC1;
+	hsd1.Init.ClockEdge = SDMMC_CLOCK_EDGE_RISING;
+	hsd1.Init.ClockPowerSave = SDMMC_CLOCK_POWER_SAVE_DISABLE;
+	hsd1.Init.BusWide = SDMMC_BUS_WIDE_4B;
+	hsd1.Init.HardwareFlowControl = SDMMC_HARDWARE_FLOW_CONTROL_DISABLE;
+	hsd1.Init.ClockDiv = 0;
+	if (HAL_SD_Init(&hsd1) != HAL_OK) {
+		Error_Handler();
+	}
+	/* USER CODE BEGIN SDMMC1_Init 2 */
+
+	/* USER CODE END SDMMC1_Init 2 */
 
 }
 
@@ -1040,8 +1163,7 @@ static void MX_GPIO_Init(void) {
 	__HAL_RCC_GPIOD_CLK_ENABLE();
 
 	/*Configure GPIO pin Output Level */
-	HAL_GPIO_WritePin(GPIOC, CE_Pin | SPI1_CS_Pin | GPIO_PIN_12,
-			GPIO_PIN_RESET);
+	HAL_GPIO_WritePin(GPIOC, CE_Pin | SPI1_CS_Pin, GPIO_PIN_RESET);
 
 	/*Configure GPIO pin Output Level */
 	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2 | CSN_Pin | GPIO_PIN_8, GPIO_PIN_RESET);
@@ -1049,8 +1171,8 @@ static void MX_GPIO_Init(void) {
 	/*Configure GPIO pin Output Level */
 	HAL_GPIO_WritePin(ICM_INT_GPIO_Port, ICM_INT_Pin, GPIO_PIN_RESET);
 
-	/*Configure GPIO pins : CE_Pin SPI1_CS_Pin PC12 */
-	GPIO_InitStruct.Pin = CE_Pin | SPI1_CS_Pin | GPIO_PIN_12;
+	/*Configure GPIO pins : CE_Pin SPI1_CS_Pin */
+	GPIO_InitStruct.Pin = CE_Pin | SPI1_CS_Pin;
 	GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
 	GPIO_InitStruct.Pull = GPIO_NOPULL;
 	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
@@ -1063,28 +1185,12 @@ static void MX_GPIO_Init(void) {
 	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
 	HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-	/*Configure GPIO pins : PC8 PC9 PC10 PC11 */
-	GPIO_InitStruct.Pin = GPIO_PIN_8 | GPIO_PIN_9 | GPIO_PIN_10 | GPIO_PIN_11;
-	GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-	GPIO_InitStruct.Pull = GPIO_NOPULL;
-	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
-	GPIO_InitStruct.Alternate = GPIO_AF12_SDMMC1;
-	HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
-
 	/*Configure GPIO pin : ICM_INT_Pin */
 	GPIO_InitStruct.Pin = ICM_INT_Pin;
 	GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
 	GPIO_InitStruct.Pull = GPIO_NOPULL;
 	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
 	HAL_GPIO_Init(ICM_INT_GPIO_Port, &GPIO_InitStruct);
-
-	/*Configure GPIO pin : PD2 */
-	GPIO_InitStruct.Pin = GPIO_PIN_2;
-	GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-	GPIO_InitStruct.Pull = GPIO_NOPULL;
-	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
-	GPIO_InitStruct.Alternate = GPIO_AF12_SDMMC1;
-	HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
 
 	/* USER CODE BEGIN MX_GPIO_Init_2 */
 

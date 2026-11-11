@@ -40,6 +40,7 @@ extern TelemetryData txData;
 extern ICM20602_t imu;
 extern DSP310_t dsp_sensor;
 extern Kalman4D_t kf_4d;
+extern Kalman2D_t kf_2d;
 
 #ifdef USE_QMC5883
 extern QMC5883_t mag;
@@ -106,5 +107,6 @@ void writeMotor(uint8_t chanel, int16_t us);
 void mixer(void);
 void RxController(void);
 void Failsafe_Task(void);
+void FLight_Control_Log(void);
 
 #endif /* INC_FLIGHT_CONTROL_H_ */

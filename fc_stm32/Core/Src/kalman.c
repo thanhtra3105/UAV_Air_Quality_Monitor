@@ -331,7 +331,7 @@ void Kalman4D_UpdateMeasure(Kalman4D_t *kf, float alt_measured, float sigma_alt,
 }
 
 // Ngưỡng độ cao chuyển giao (cm)
-#define TRANSITION_ALT 150.0f
+#define TRANSITION_ALT 100.0f
 
 float Kalman4D_getSigmaBaro(float current_estimated_alt_cm) {
 	float base_sigma = 20.0f; // Nhiễu tiêu chuẩn của Baro khi bay cao (cm)
@@ -353,7 +353,7 @@ float Kalman4D_getSigmaRange(float range_alt_cm, float current_estimated_alt_cm,
 	float base_sigma = 2.0f; // Rangefinder đo rất chính xác ở tầm thấp (5cm)
 
 	// 1. Phân kì tầm xa: Lên quá cao (2m) thì Rangefinder không còn là nguồn ưu tiên
-	if (range_alt_cm > 200.0f || current_estimated_alt_cm > 200.0f) {
+	if (range_alt_cm > 100.0f || current_estimated_alt_cm > 200.0f) {
 		return 10000.0f; // Phạt R cực lớn để Kalman gần như lờ đi Rangefinder
 	}
 
@@ -386,4 +386,16 @@ void Kalman4D_UpdateRange(Kalman4D_t *kf, float range_alt_cm, float acc_z) {
 	// Yêu cầu bạn truyền acc_z vào hàm này (lưu ý: acc_z phải là gia tốc đã trừ đi trọng lực 1G)
 	sigma_range = Kalman4D_getSigmaRange(range_alt_cm, kf->altitude, acc_z);
 	Kalman4D_UpdateMeasure(kf, range_alt_cm, sigma_range, H);
+}
+
+// Cập nhật Baro cho Kalman 2D (không có bias)
+void Kalman2D_UpdateBaro(Kalman2D_t *kf, float baro_alt_cm) {
+	float sigma_baro = Kalman4D_getSigmaBaro(kf->altitude);
+	Kalman2D_Update(kf, baro_alt_cm, sigma_baro);
+}
+
+// Cập nhật Rangefinder cho Kalman 2D (không có bias)
+void Kalman2D_UpdateRange(Kalman2D_t *kf, float range_alt_cm, float acc_z) {
+	float sigma_range = Kalman4D_getSigmaRange(range_alt_cm, kf->altitude, acc_z);
+	Kalman2D_Update(kf, range_alt_cm, sigma_range);
 }

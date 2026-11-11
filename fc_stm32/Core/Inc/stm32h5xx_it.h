@@ -64,6 +64,7 @@ void I2C1_ER_IRQHandler(void);
 void USART1_IRQHandler(void);
 void USART2_IRQHandler(void);
 void UART4_IRQHandler(void);
+void SDMMC1_IRQHandler(void);
 void GPDMA2_Channel0_IRQHandler(void);
 void GPDMA2_Channel1_IRQHandler(void);
 void UART7_IRQHandler(void);

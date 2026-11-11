@@ -58,6 +58,8 @@ void Kalman1D_Compute(float KalmanState, float KalmanUncertainty,
 void Kalman2D_Init(Kalman2D_t *kf, float initial_alt);
 void Kalman2D_Predict(Kalman2D_t *kf, float acc_z, float dt);
 void Kalman2D_Update(Kalman2D_t *kf, float alt_measured, float sigma_alt);
+void Kalman2D_UpdateBaro(Kalman2D_t *kf, float baro_alt_cm);
+void Kalman2D_UpdateRange(Kalman2D_t *kf, float range_alt_cm, float acc_z);
 
 // (Tùy chọn) Hàm gộp chung cả Predict và Update giống kalman_2d cũ của bạn
 void Kalman2D_Compute(Kalman2D_t *kf, float acc_z, float alt_measured,

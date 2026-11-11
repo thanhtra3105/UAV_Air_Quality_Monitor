@@ -12,6 +12,7 @@
 #include "dwt.h"
 #include <math.h>
 #include <string.h>
+#include "log.h"
 
 /* ================= HARDWARE PERIPHERALS ================= */
 extern TIM_HandleTypeDef htim3;
@@ -27,10 +28,12 @@ TelemetryData txData;
 ICM20602_t imu;
 DSP310_t dsp_sensor;
 Kalman4D_t kf_4d;
+Kalman2D_t kf_2d;
 extern MTF01_t mtf_data;
 extern uint8_t mtf01_updated;
 
 extern FlightMode_t flight_mode;
+extern FlightLogData_t log_data;
 
 #ifdef USE_QMC5883
 QMC5883_t mag;
@@ -285,6 +288,19 @@ void calculateAngle(float dt_val) {
 	float roll_acc = atan2f(ay, sqrtf(ax * ax + az * az)) * RAD_TO_DEG;
 	float pitch_acc = atan2f(-ax, sqrtf(ay * ay + az * az)) * RAD_TO_DEG;
 
+	// Bộ lọc bù (Complementary Filter) để benchmark đối chứng với Kalman
+	// Ở tần số 500 Hz (dt = 0.002s), hệ số chuẩn để time constant tau = 1.0s là 0.998 (thay vì 0.98 ở 50Hz)
+	static float roll_cf = 0.0f;
+	static float pitch_cf = 0.0f;
+	static bool cf_initialized = false;
+	if (!cf_initialized) {
+		roll_cf = roll_acc;
+		pitch_cf = pitch_acc;
+		cf_initialized = true;
+	}
+	roll_cf = 0.998f * (roll_cf + gx * dt_val) + 0.002f * roll_acc;
+	pitch_cf = 0.998f * (pitch_cf + gy * dt_val) + 0.002f * pitch_acc;
+
 	// Kalman Filter 1D cho Roll & Pitch
 	Kalman1D_Compute(roll, KalmanUncertaintyAngleRoll, gx, roll_acc, dt_val);
 	roll = Kalman1DOutput[0];
@@ -333,29 +349,15 @@ void calculateAngle(float dt_val) {
 	}
 
 	Kalman4D_Predict(&kf_4d, acc_z_filt, dt_val);
+	Kalman2D_Predict(&kf_2d, acc_z_filt, dt_val);
 	static float dsp310_alt_cm = 0;
 
-//	if (DSP310_Read(&dsp_sensor)) {
-//		dsp310_alt_cm = (dsp_sensor.altitude - alt_offset) * 100.0f;
-////		current_alt = dsp310_alt_cm;
-//		Kalman4D_UpdateBaro(&kf_4d, dsp310_alt_cm);
-//
-//		float range_raw_cm = mtf_data.distance / 10.0f;
-//		range_cm = MTF01_Median3(range_raw_cm);
-//		uint8_t tilt_valid = (fabsf(roll) < 25.0f) && (fabsf(pitch) < 25.0f);
-//		range_cm -= range_alt_offset;
-//		if (range_cm < 0)
-//			range_cm = 0;
-//		uint8_t distance_valid = (range_cm < 1200.0f);
-//		uint8_t range_valid = 1;
-//		if (range_valid && tilt_valid && distance_valid) {
-//			float roll_rad = roll * DEG_TO_RAD;
-//			float pitch_rad = pitch * DEG_TO_RAD;
-//			range_vertical_cm = range_cm * cosf(roll_rad) * cosf(pitch_rad);
-//			Kalman4D_UpdateRange(&kf_4d, range_vertical_cm, acc_z_filt);
-//		}
-//
-//	}
+	if (DSP310_Read(&dsp_sensor)) {
+		dsp310_alt_cm = (dsp_sensor.altitude - alt_offset) * 100.0f;
+		Kalman4D_UpdateBaro(&kf_4d, dsp310_alt_cm);
+		Kalman2D_UpdateBaro(&kf_2d, dsp310_alt_cm);
+	}
+
 	if (mtf01_updated) {
 		float range_raw_cm = mtf_data.distance / 10.0f;
 		range_cm = MTF01_Median3(range_raw_cm);
@@ -370,9 +372,16 @@ void calculateAngle(float dt_val) {
 			float pitch_rad = pitch * DEG_TO_RAD;
 			range_vertical_cm = range_cm * cosf(roll_rad) * cosf(pitch_rad);
 			Kalman4D_UpdateRange(&kf_4d, range_vertical_cm, acc_z_filt);
+			Kalman2D_UpdateRange(&kf_2d, range_vertical_cm, acc_z_filt);
 		}
 	}
 
+	/*=== LOG DATA pitch/roll ===*/
+	log_data.pitch_raw = pitch_acc;
+	log_data.roll_raw = roll_acc;
+	log_data.pitch_cf = pitch_cf;
+	log_data.roll_cf = roll_cf;
+	log_data.az_raw = acc_z_inertial;
 }
 
 /* ================= PID CONTROLLER CALCULATIONS ================= */
@@ -588,7 +597,7 @@ void RxController(void) {
 			rc_connected = true;
 
 			// Lái tay khi ở MODE_MANUAL
-			if (flight_mode == MODE_MANUAL) {
+			if (flight_mode == MODE_MANUAL || flight_mode == MODE_ALTHOLD) {
 				throttle_rx = rxData.chinhtocdoquat;
 				target_roll = (float) map(rxData.trucX, 0, 100,
 						(long) MAX_TARGET_ROLL_PITCH,
@@ -629,12 +638,17 @@ void RxController(void) {
 		pos_hold_active = 0;
 		alt_hold = 0;
 	} else if (rxData.nut1) {
-		if (gps_home_set) {
-			// Chỉ khởi tạo 1 lần duy nhất khi bắt đầu vào chế độ PosHold
-			if (flight_mode != MODE_POSHOLD) {
-				flight_mode = MODE_POSHOLD;
-				Poshold_Init();
-			}
+//		if (gps_home_set) {
+//			// Chỉ khởi tạo 1 lần duy nhất khi bắt đầu vào chế độ PosHold
+//			if (flight_mode != MODE_POSHOLD) {
+//				flight_mode = MODE_POSHOLD;
+//				Poshold_Init();
+//			}
+//		}
+
+		if (flight_mode != MODE_ALTHOLD) {
+			flight_mode = MODE_ALTHOLD;
+			Poshold_Init();
 		}
 
 		// Khi nut1 = 1 HOẶC khi mất sóng tay cầm trong lúc đang bay AUTO:
@@ -684,4 +698,38 @@ void RxController(void) {
 //			last_fc_mode = fc->mode;
 //		}
 	}
+}
+
+/*===== LOG FLIGHT DATA ==========*/
+void FLight_Control_Log(void) {
+
+	// 1. Góc Roll & Pitch: Target vs Kalman
+	log_data.target_roll = target_roll;
+	log_data.target_pitch = target_pitch;
+	log_data.roll_kf = roll;
+	log_data.pitch_kf = pitch;
+
+	// 2. Độ cao & Vận tốc dọc & Ước lượng Bias 4D
+	log_data.alt_raw_tof = range_vertical_cm;
+	log_data.alt_raw_baro = (dsp_sensor.altitude - alt_offset) * 100.0f;
+	log_data.alt_kf_2d = kf_2d.altitude;
+	log_data.alt_kf = kf_4d.altitude;
+	log_data.vz_raw = 0.0f;
+	log_data.vz_kf_2d = kf_2d.velocity;
+	log_data.vz_kf = kf_4d.velocity;
+	log_data.acc_bias = kf_4d.acc_bias;
+	log_data.baro_bias = kf_4d.baro_bias;
+
+	// 3. Vị trí & Vận tốc ngang (X: North, Y: East)
+	log_data.pos_x_raw = pos_N;
+	log_data.pos_x_kf = est_x;
+	log_data.pos_y_raw = pos_E;
+	log_data.pos_y_kf = est_y;
+	log_data.vel_x_raw = (float) gps.velN / 1000.0f; // hoặc mtf_data.vx
+	log_data.vel_x_kf = est_vx;
+	log_data.vel_y_raw = (float) gps.velE / 1000.0f; // hoặc mtf_data.vy
+	log_data.vel_y_kf = est_vy;
+
+	// Ghi trực tiếp vào RAM Blackbox (0.05 us)
+	Log_Write_Custom(&log_data);
 }
