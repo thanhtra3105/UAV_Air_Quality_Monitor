@@ -1,0 +1,24 @@
+# STM32CubeIDE Build outputs
+Debug/
+Release/
+fc_stm32/Debug/
+fc_stm32/Release/
+*.o
+*.d
+*.su
+*.cyclo
+*.elf
+*.bin
+*.hex
+*.map
+*.list
+
+# IDE specific
+.theia/
+.settings/
+
+# Temp files & logs
+*.log
+*.tmp
+~$*
+
