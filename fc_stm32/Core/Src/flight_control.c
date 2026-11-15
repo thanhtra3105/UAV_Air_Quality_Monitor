@@ -612,7 +612,8 @@ void RxController(void) {
 			txData.lon = (int32_t) (gps.longitude * 1e7);
 			txData.x = est_x;
 			txData.y = est_y;
-			txData.alt = kf_4d.altitude;
+//			txData.alt = kf_4d.altitude;
+			txData.alt = mtf_data.distance / 10.0f;
 			txData.target_x = (flight_mode == MODE_POSHOLD
 					|| flight_mode == MODE_NAVIGATION);
 			txData.target_y = kf_4d.velocity;
@@ -646,11 +647,19 @@ void RxController(void) {
 //			}
 //		}
 
-		if (flight_mode != MODE_ALTHOLD) {
-			flight_mode = MODE_ALTHOLD;
-			Poshold_Init();
+		if (rxData.nut2) {
+			if (gps_home_set) {
+				if (flight_mode != MODE_POSHOLD) {
+					flight_mode = MODE_POSHOLD;
+					Poshold_Init();
+				}
+			}
+		} else {
+			if (flight_mode != MODE_ALTHOLD) {
+				flight_mode = MODE_ALTHOLD;
+				Poshold_Init();
+			}
 		}
-
 		// Khi nut1 = 1 HOẶC khi mất sóng tay cầm trong lúc đang bay AUTO:
 		// VẪN TIẾP TỤC LẮNG NGHE VÀ THI HÀNH LỆNH TỪ RASPBERRY PI BÌNH THƯỜNG!
 //		const FlightControlState_t *fc = FlightControl_GetState();
@@ -710,7 +719,9 @@ void FLight_Control_Log(void) {
 	log_data.pitch_kf = pitch;
 
 	// 2. Độ cao & Vận tốc dọc & Ước lượng Bias 4D
-	log_data.alt_raw_tof = range_vertical_cm;
+//	log_data.alt_raw_tof = range_vertical_cm;
+	log_data.alt_raw_tof = MTF01_Median3(
+			(mtf_data.distance - alt_offset) / 10.0f);
 	log_data.alt_raw_baro = (dsp_sensor.altitude - alt_offset) * 100.0f;
 	log_data.alt_kf_2d = kf_2d.altitude;
 	log_data.alt_kf = kf_4d.altitude;
