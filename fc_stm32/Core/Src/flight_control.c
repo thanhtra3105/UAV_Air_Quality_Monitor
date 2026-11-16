@@ -116,7 +116,7 @@ float kp_alt_vel = 1.0f, ki_alt_vel = 0.2f, kd_alt_vel = 0.003f;
 //float kp_xy_vel = 4.0f, ki_xy_vel = 0.1f, kd_xy_vel = 0.1f;
 /*	GPS*/
 float kp_xy_pos = 0.3f, ki_xy_pos = 0.0f, kd_xy_pos = 0.0f;
-float kp_xy_vel = 3.3f, ki_xy_vel = 0.0f, kd_xy_vel = 0.05f;
+float kp_xy_vel = 4.5f, ki_xy_vel = 0.0f, kd_xy_vel = 0.15f;
 
 /* ================= INITIALIZATION ================= */
 void FlightControl_Init(void) {
@@ -742,5 +742,7 @@ void FLight_Control_Log(void) {
 	log_data.vel_y_kf = est_vy;
 
 	// Ghi trực tiếp vào RAM Blackbox (0.05 us)
-	Log_Write_Custom(&log_data);
+	if (flight_mode == MODE_POSHOLD) {
+		Log_Write_Custom(&log_data);
+	}
 }

@@ -18,9 +18,12 @@ static float s_compMatrix[3][3] = { { 1.0f, 0.0f, 0.0f }, { 0.0f, 1.0f, 0.0f },
 static uint8_t s_compMatrixValid = 0;
 
 /* Thêm các biến toàn cục này ở đầu file ist8310.c */
-float mag_offset_x = -0.00307944231;	// -0.00595482439
-float mag_offset_y = -0.00125669688;	// -0.00366889872
-float mag_offset_z = -0.00305685215;	// -0.00209930167
+float mag_offset_x = -0.000929798931; //-0.000702556223;
+// -0.00307944231;	// -0.00595482439
+float mag_offset_y = -0.00115834363;//0.000121362507;
+// -0.00125669688;	// -0.00366889872
+float mag_offset_z = -0.00287425891; //-0.00200683065;
+// -0.00305685215;	// -0.00209930167
 
 float ist_min_x = 100000.0f, ist_max_x = -100000.0f;
 float ist_min_y = 100000.0f, ist_max_y = -100000.0f;
