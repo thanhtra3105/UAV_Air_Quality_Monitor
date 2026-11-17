@@ -647,19 +647,20 @@ void RxController(void) {
 //			}
 //		}
 
-		if (rxData.nut2) {
-			if (gps_home_set) {
-				if (flight_mode != MODE_POSHOLD) {
-					flight_mode = MODE_POSHOLD;
-					Poshold_Init();
-				}
-			}
-		} else {
-			if (flight_mode != MODE_ALTHOLD) {
-				flight_mode = MODE_ALTHOLD;
-				Poshold_Init();
-			}
-		}
+//		if (rxData.nut2) {
+//			if (gps_home_set) {
+//				if (flight_mode != MODE_POSHOLD) {
+//					flight_mode = MODE_POSHOLD;
+//					Poshold_Init();
+//				}
+//			}
+//		} else {
+//			if (flight_mode != MODE_ALTHOLD) {
+//				flight_mode = MODE_ALTHOLD;
+//				Poshold_Init();
+//			}
+//		}
+
 		// Khi nut1 = 1 HOẶC khi mất sóng tay cầm trong lúc đang bay AUTO:
 		// VẪN TIẾP TỤC LẮNG NGHE VÀ THI HÀNH LỆNH TỪ RASPBERRY PI BÌNH THƯỜNG!
 //		const FlightControlState_t *fc = FlightControl_GetState();
@@ -732,6 +733,8 @@ void FLight_Control_Log(void) {
 	log_data.baro_bias = kf_4d.baro_bias;
 
 	// 3. Vị trí & Vận tốc ngang (X: North, Y: East)
+	log_data.ax_earth = ax_earth;
+	log_data.ay_earth = ay_earth;
 	log_data.pos_x_raw = pos_N;
 	log_data.pos_x_kf = est_x;
 	log_data.pos_y_raw = pos_E;
@@ -742,7 +745,8 @@ void FLight_Control_Log(void) {
 	log_data.vel_y_kf = est_vy;
 
 	// Ghi trực tiếp vào RAM Blackbox (0.05 us)
-	if (flight_mode == MODE_POSHOLD) {
+	if(rxData.nut1)
+	{
 		Log_Write_Custom(&log_data);
 	}
 }

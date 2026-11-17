@@ -16,8 +16,8 @@
 extern UART_HandleTypeDef huart1;
 extern int throttle;
 
-/* BỘ ĐỆM RAM GHI CHUYẾN BAY: 3600 mẫu * 92 bytes = ~331 KB RAM */
-static FlightLogData_t ram_log_buffer[MAX_RAM_LOG_SAMPLES];
+/* BỘ ĐỆM RAM GHI GIA TỐC 500Hz: 15,000 mẫu * 12 bytes = ~176 KB RAM */
+static AccelLog_t      ram_log_buffer[MAX_RAM_LOG_SAMPLES];
 static uint16_t        ram_log_count = 0;
 static bool            is_recording = false;
 static bool            has_saved_to_sd = false;
@@ -30,7 +30,7 @@ ALIGN_32BYTES(static uint8_t media_memory[FX_STM32_SD_DEFAULT_SECTOR_SIZE]);
 ALIGN_32BYTES(static char    sd_chunk_buffer[1024]);
 
 /**
- * @brief  Khởi tạo hệ thống RAM Blackbox
+ * @brief  Khởi tạo hệ thống RAM Blackbox 500Hz
  */
 uint8_t Log_Init(void)
 {
@@ -43,32 +43,33 @@ uint8_t Log_Init(void)
     HAL_NVIC_SetPriority(SDMMC1_IRQn, 5, 0);
     HAL_NVIC_EnableIRQ(SDMMC1_IRQn);
 
-    Serial_printf(&huart1, "[LOG] RAM Blackbox san sang! (~330KB RAM, bat dau ghi khi throttle >= 1400)\r\n");
+    Serial_printf(&huart1, "[LOG] RAM 500Hz Blackbox san sang! (15.000 mau ~ 30 giay, bat dau ghi khi throttle >= %d)\r\n", LOG_THROTTLE_START);
     return 0;
 }
 
 /**
- * @brief  Ghi mẫu trực tiếp vào RAM (Chỉ tốn 0.05 us)
+ * @brief  Ghi mẫu trực tiếp vào RAM ở 500Hz (Chỉ tốn 0.03 us, 0us trễ loop bay)
  */
-void Log_Write_Custom(const FlightLogData_t *data)
+void Log_Write_Accel(uint32_t time_us, float ax, float ay)
 {
-    if (data == NULL || is_saving_active || has_saved_to_sd) {
+    if (is_saving_active || has_saved_to_sd) {
         return;
     }
 
-    // 1. Chỉ bắt đầu kích hoạt ghi khi cần ga được đẩy lên >= 1400
+    // 1. Chỉ bắt đầu kích hoạt ghi khi cần ga được đẩy lên >= LOG_THROTTLE_START
     if (!is_recording) {
         if (throttle >= LOG_THROTTLE_START) {
             is_recording = true;
-//            Serial_printf(&huart1, "[LOG] Ga >= %d -> Bat dau ghi vao RAM!\r\n", LOG_THROTTLE_START);
         } else {
             return; // Chưa đủ ga, không ghi
         }
     }
 
-    // 2. Chép mẫu vào RAM nếu còn chỗ (Khi đầy 3600 mẫu thì tự động ngừng, không làm tràn RAM)
+    // 2. Chép mẫu vào RAM nếu còn chỗ (Khi đầy 15000 mẫu thì tự động ngừng, không tràn RAM)
     if (ram_log_count < MAX_RAM_LOG_SAMPLES) {
-        ram_log_buffer[ram_log_count] = *data;
+        ram_log_buffer[ram_log_count].time_us = time_us;
+        ram_log_buffer[ram_log_count].ax_earth = ax;
+        ram_log_buffer[ram_log_count].ay_earth = ay;
         ram_log_count++;
     }
 }
@@ -137,32 +138,21 @@ void Log_Save_RAM_To_SD(void)
         return;
     }
 
-    // 4. Ghi tiêu đề các cột chuẩn CSV (Header) cho Paper Benchmark
-    const char header[] = "time_ms,"
-                          "target_roll,roll_raw,roll_cf,roll_kf,"
-                          "target_pitch,pitch_raw,pitch_cf,pitch_kf,"
-                          "alt_tof,alt_baro,alt_kf_2d,alt_kf,vz_raw,vz_kf_2d,vz_kf,az_raw,"
-                          "acc_bias,baro_bias,"
-                          "pos_x_raw,pos_x_kf,pos_y_raw,pos_y_kf,"
-                          "vel_x_raw,vel_x_kf,vel_y_raw,vel_y_kf\r\n";
+    // 4. Ghi tiêu đề các cột chuẩn CSV (Header) cho Accel Noise Benchmark
+    const char header[] = "time_us,ax_earth,ay_earth\r\n";
 
     fx_file_write(&log_file, (void *)header, strlen(header));
 
     // 5. Xả tuần tự các mẫu từ RAM xuống buffer rồi ghi ra thẻ SD
     uint16_t chunk_len = 0;
     for (uint16_t i = 0; i < ram_log_count; i++) {
-        FlightLogData_t *p = &ram_log_buffer[i];
-        char line[280];
+        AccelLog_t *p = &ram_log_buffer[i];
+        char line[64];
         int len = snprintf(line, sizeof(line),
-            "%lu,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%.2f,%.3f,%.2f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f\r\n",
-            (unsigned long)p->time_ms,
-            p->target_roll, p->roll_raw, p->roll_cf, p->roll_kf,
-            p->target_pitch, p->pitch_raw, p->pitch_cf, p->pitch_kf,
-            p->alt_raw_tof, p->alt_raw_baro, p->alt_kf_2d, p->alt_kf,
-            p->vz_raw, p->vz_kf_2d, p->vz_kf, p->az_raw,
-            p->acc_bias, p->baro_bias,
-            p->pos_x_raw, p->pos_x_kf, p->pos_y_raw, p->pos_y_kf,
-            p->vel_x_raw, p->vel_x_kf, p->vel_y_raw, p->vel_y_kf);
+            "%lu,%.4f,%.4f\r\n",
+            (unsigned long)p->time_us,
+            p->ax_earth,
+            p->ay_earth);
 
         if (len > 0) {
             // Nếu buffer gần đầy -> ghi khối xuống thẻ SD

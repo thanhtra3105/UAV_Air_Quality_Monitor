@@ -483,21 +483,17 @@ int main(void) {
 			esp_timer = DWT_GetMicros();
 		}
 
-		// ================= GHI LOG BENCHMARK VÀO RAM (50 Hz) =================
-		static uint8_t log_divider = 0;
-		if (++log_divider >= 10) // 500Hz / 10 = 50Hz (20ms/mẫu)
-				{
-			log_divider = 0;
-			log_data.time_ms = HAL_GetTick();
-			FLight_Control_Log();
-		}
+		// ================= GHI LOG ACCEL 500Hz VÀO RAM =================
+		Log_Write_Accel(DWT_GetMicros(), ax_earth, ay_earth);
 
 		// Tự động lưu xuống thẻ SD khi hạ cánh (throttle < 1030)
 		Log_Check_Auto_Save();
 		// =====================================================================
 
-		// In chu kỳ thực tế DT ra Python App (In trước dòng while để thời gian truyền UART được bù trừ trong 2000 us)
-
+		// if(ay_earth > 1 || ay_earth <-1)
+		// {
+		// 	Serial_printf(&huart1, "ay= %f\r\n", ay_earth);
+		// }
 		while ((DWT_GetMicros() - start) < 2000)
 			;
 //		Serial_printf(&huart1, "%f\r\n", DWT_GetMicros() - start);

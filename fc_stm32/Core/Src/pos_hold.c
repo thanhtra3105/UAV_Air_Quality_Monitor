@@ -261,8 +261,8 @@ void Estimate_Position_GPS_Kalman(float dt_val) {
 	ay_earth = sy * cp * ax_frd + (-sy * sp * sr + cy * cr) * ay_frd
 			+ (-sy * sp * cr - cy * sr) * az_frd;
 
-	ax_earth *= 9.81f;
-	ay_earth *= 9.81f;
+	ax_earth *= -9.81f;
+	ay_earth *= -9.81f;
 
 	KalmanGPS_Predict(&kf_North, ax_earth, dt_val);
 	KalmanGPS_Predict(&kf_East, ay_earth, dt_val);
