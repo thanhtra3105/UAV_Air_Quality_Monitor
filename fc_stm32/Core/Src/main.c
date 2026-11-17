@@ -483,11 +483,12 @@ int main(void) {
 			esp_timer = DWT_GetMicros();
 		}
 
-		// ================= GHI LOG ACCEL 500Hz VÀO RAM =================
-		Log_Write_Accel(DWT_GetMicros(), ax_earth, ay_earth);
-
-		// Tự động lưu xuống thẻ SD khi hạ cánh (throttle < 1030)
-		Log_Check_Auto_Save();
+		// ================= GHI LOG ACCEL 500Hz + GPS VÀO RAM =================
+//		if(rxData.nut1)
+//			Log_Write_Flight(DWT_GetMicros(), ax_earth, ay_earth, &gps);
+//
+//		// Tự động lưu xuống thẻ SD khi hạ cánh (throttle < 1030)
+//		Log_Check_Auto_Save();
 		// =====================================================================
 
 		// if(ay_earth > 1 || ay_earth <-1)

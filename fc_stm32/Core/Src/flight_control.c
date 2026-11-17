@@ -647,19 +647,19 @@ void RxController(void) {
 //			}
 //		}
 
-//		if (rxData.nut2) {
-//			if (gps_home_set) {
-//				if (flight_mode != MODE_POSHOLD) {
-//					flight_mode = MODE_POSHOLD;
-//					Poshold_Init();
-//				}
-//			}
-//		} else {
-//			if (flight_mode != MODE_ALTHOLD) {
-//				flight_mode = MODE_ALTHOLD;
-//				Poshold_Init();
-//			}
-//		}
+		if (rxData.nut2) {
+			if (gps_home_set) {
+				if (flight_mode != MODE_POSHOLD) {
+					flight_mode = MODE_POSHOLD;
+					Poshold_Init();
+				}
+			}
+		} else {
+			if (flight_mode != MODE_ALTHOLD) {
+				flight_mode = MODE_ALTHOLD;
+				Poshold_Init();
+			}
+		}
 
 		// Khi nut1 = 1 HOẶC khi mất sóng tay cầm trong lúc đang bay AUTO:
 		// VẪN TIẾP TỤC LẮNG NGHE VÀ THI HÀNH LỆNH TỪ RASPBERRY PI BÌNH THƯỜNG!

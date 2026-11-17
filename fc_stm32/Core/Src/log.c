@@ -15,8 +15,10 @@
 
 extern UART_HandleTypeDef huart1;
 extern int throttle;
+extern GPS_Data_t gps;
+extern uint8_t gps_new_data_flag;
 
-/* BỘ ĐỆM RAM GHI GIA TỐC 500Hz: 15,000 mẫu * 12 bytes = ~176 KB RAM */
+/* BỘ ĐỆM RAM GHI GIA TỐC 500Hz + GPS: 12,000 mẫu * 32 bytes = 384 KB RAM */
 static AccelLog_t      ram_log_buffer[MAX_RAM_LOG_SAMPLES];
 static uint16_t        ram_log_count = 0;
 static bool            is_recording = false;
@@ -43,14 +45,14 @@ uint8_t Log_Init(void)
     HAL_NVIC_SetPriority(SDMMC1_IRQn, 5, 0);
     HAL_NVIC_EnableIRQ(SDMMC1_IRQn);
 
-    Serial_printf(&huart1, "[LOG] RAM 500Hz Blackbox san sang! (15.000 mau ~ 30 giay, bat dau ghi khi throttle >= %d)\r\n", LOG_THROTTLE_START);
+    Serial_printf(&huart1, "[LOG] RAM Blackbox san sang! (12.000 mau Accel 500Hz + GPS ~ 24s bay, bat dau khi throttle >= %d)\r\n", LOG_THROTTLE_START);
     return 0;
 }
 
 /**
- * @brief  Ghi mẫu trực tiếp vào RAM ở 500Hz (Chỉ tốn 0.03 us, 0us trễ loop bay)
+ * @brief  Ghi chi tiết mẫu trực tiếp vào RAM
  */
-void Log_Write_Accel(uint32_t time_us, float ax, float ay)
+void Log_Write_Data(uint32_t time_us, float ax, float ay, float velN, float velE, float hAcc, float sAcc, uint8_t gps_updated)
 {
     if (is_saving_active || has_saved_to_sd) {
         return;
@@ -65,13 +67,50 @@ void Log_Write_Accel(uint32_t time_us, float ax, float ay)
         }
     }
 
-    // 2. Chép mẫu vào RAM nếu còn chỗ (Khi đầy 15000 mẫu thì tự động ngừng, không tràn RAM)
+    // 2. Chép mẫu vào RAM nếu còn chỗ (Khi đầy 12000 mẫu thì tự động ngừng, không tràn RAM)
     if (ram_log_count < MAX_RAM_LOG_SAMPLES) {
         ram_log_buffer[ram_log_count].time_us = time_us;
         ram_log_buffer[ram_log_count].ax_earth = ax;
         ram_log_buffer[ram_log_count].ay_earth = ay;
+        ram_log_buffer[ram_log_count].velN = velN;
+        ram_log_buffer[ram_log_count].velE = velE;
+        ram_log_buffer[ram_log_count].hAcc = hAcc;
+        ram_log_buffer[ram_log_count].sAcc = sAcc;
+        ram_log_buffer[ram_log_count].gps_updated = gps_updated;
         ram_log_count++;
     }
+}
+
+/**
+ * @brief  Ghi đầy đủ Accel 500Hz và trích xuất dữ liệu GPS sang hệ đơn vị SI (m, m/s)
+ */
+void Log_Write_Flight(uint32_t time_us, float ax, float ay, const GPS_Data_t *myGPS)
+{
+    float velN = 0.0f;
+    float velE = 0.0f;
+    float hAcc = 0.0f;
+    float sAcc = 0.0f;
+    uint8_t updated = 0;
+
+    if (myGPS != NULL) {
+        velN = (float)myGPS->velN * 0.001f; // Chuyển từ mm/s sang m/s
+        velE = (float)myGPS->velE * 0.001f; // Chuyển từ mm/s sang m/s
+        hAcc = (float)myGPS->hAcc * 0.001f; // Chuyển từ mm sang m
+        sAcc = (float)myGPS->sAcc * 0.001f; // Chuyển từ mm/s sang m/s
+    }
+
+    updated = gps_new_data_flag;
+    gps_new_data_flag = 0; // Xóa cờ sau khi đã ghi nhận
+
+    Log_Write_Data(time_us, ax, ay, velN, velE, hAcc, sAcc, updated);
+}
+
+/**
+ * @brief  Ghi gia tốc trực tiếp vào RAM (Tự động lấy thêm dữ liệu GPS toàn cục)
+ */
+void Log_Write_Accel(uint32_t time_us, float ax, float ay)
+{
+    Log_Write_Flight(time_us, ax, ay, &gps);
 }
 
 /**
@@ -138,8 +177,8 @@ void Log_Save_RAM_To_SD(void)
         return;
     }
 
-    // 4. Ghi tiêu đề các cột chuẩn CSV (Header) cho Accel Noise Benchmark
-    const char header[] = "time_us,ax_earth,ay_earth\r\n";
+    // 4. Ghi tiêu đề các cột chuẩn CSV (Header) cho Accel + GPS Benchmark
+    const char header[] = "time_us,ax_earth,ay_earth,velN,velE,hAcc,sAcc,gps_updated\r\n";
 
     fx_file_write(&log_file, (void *)header, strlen(header));
 
@@ -147,12 +186,17 @@ void Log_Save_RAM_To_SD(void)
     uint16_t chunk_len = 0;
     for (uint16_t i = 0; i < ram_log_count; i++) {
         AccelLog_t *p = &ram_log_buffer[i];
-        char line[64];
+        char line[96];
         int len = snprintf(line, sizeof(line),
-            "%lu,%.4f,%.4f\r\n",
+            "%lu,%.4f,%.4f,%.3f,%.3f,%.3f,%.3f,%u\r\n",
             (unsigned long)p->time_us,
             p->ax_earth,
-            p->ay_earth);
+            p->ay_earth,
+            p->velN,
+            p->velE,
+            p->hAcc,
+            p->sAcc,
+            (unsigned int)p->gps_updated);
 
         if (len > 0) {
             // Nếu buffer gần đầy -> ghi khối xuống thẻ SD

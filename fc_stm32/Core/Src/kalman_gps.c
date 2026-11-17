@@ -106,20 +106,37 @@ void KalmanGPS_Predict(KalmanFilter1D_t *kf, float accel_earth, float dt) {
 	 * 4. Process noise
 	 * ========================= */
 
+	// float dt2 = dt * dt;
+	// float dt3 = dt2 * dt;
+	// float dt4 = dt2 * dt2;
+
+	// Pnew[0][0] += 0.25f * dt4 * kf->Q_accel;
+	// Pnew[0][1] += 0.5f * dt3 * kf->Q_accel;
+	// Pnew[1][0] += 0.5f * dt3 * kf->Q_accel;
+	// Pnew[1][1] += dt2 * kf->Q_accel;
+
+	// Pnew[2][2] += kf->Q_bias * dt;
+
+	// Mo hinh nhieu trang lien tu
 	float dt2 = dt * dt;
 	float dt3 = dt2 * dt;
-	float dt4 = dt2 * dt2;
-
-	Pnew[0][0] += 0.25f * dt4 * kf->Q_accel;
-	Pnew[0][1] += 0.5f * dt3 * kf->Q_accel;
-	Pnew[1][0] += 0.5f * dt3 * kf->Q_accel;
-	Pnew[1][1] += dt2 * kf->Q_accel;
-
+	Pnew[0][0] += (1.0f / 3.0f) * dt3 * kf->Q_accel;
+	Pnew[0][1] += 0.5f * dt2 * kf->Q_accel;
+	Pnew[1][0] += 0.5f * dt2 * kf->Q_accel;
+	Pnew[1][1] += dt * kf->Q_accel;
 	Pnew[2][2] += kf->Q_bias * dt;
 
 	/* =========================
-	 * 5. Copy back
+	 * 5. Copy back & Enforce symmetry
 	 * ========================= */
+
+	for (int i = 0; i < 3; i++) {
+		for (int j = i + 1; j < 3; j++) {
+			float sym = 0.5f * (Pnew[i][j] + Pnew[j][i]);
+			Pnew[i][j] = sym;
+			Pnew[j][i] = sym;
+		}
+	}
 
 	for (int i = 0; i < 3; i++) {
 		for (int j = 0; j < 3; j++) {
@@ -162,12 +179,60 @@ void KalmanGPS_Update(KalmanFilter1D_t *kf, float gps_pos, float gps_vel,
 	kf->vel += K[1][0] * y_pos + K[1][1] * y_vel;
 	kf->bias += K[2][0] * y_pos + K[2][1] * y_vel; // Tự động nhận diện và sửa sai số phần cứng IMU
 
-	// 5. Cập nhật lại ma trận P (P = (I - K*H)*P)
+	/* =========================================================================
+	 * 5. Cập nhật ma trận hiệp phương sai theo dạng Joseph (Joseph Form):
+	 *    P = (I - K*H) * P * (I - K*H)^T + K * R * K^T
+	 *
+	 * Ưu điểm vượt trội:
+	 *  - Luôn đảm bảo ma trận P đối xứng và xác định dương (không bị âm phương sai).
+	 *  - Triệt tiêu hoàn toàn sai số làm tròn số thực (float32) gây phân kỳ bộ lọc.
+	 * ========================================================================= */
+
+	// Ma trận A = (I - K*H) kích thước 3x3
+	// Do H = [1 0 0; 0 1 0] nên K*H = [K[0][0] K[0][1] 0;
+	//                                  K[1][0] K[1][1] 0;
+	//                                  K[2][0] K[2][1] 0]
+	float A[3][3] = {
+		{ 1.0f - K[0][0],        -K[0][1], 0.0f },
+		{       -K[1][0], 1.0f - K[1][1], 0.0f },
+		{       -K[2][0],        -K[2][1], 1.0f }
+	};
+
+	// Bước 5a: Tính ma trận trung gian AP = A * P (3x3)
+	float AP[3][3] = { 0 };
+	for (int i = 0; i < 3; i++) {
+		for (int j = 0; j < 3; j++) {
+			AP[i][j] = A[i][0] * kf->P[0][j]
+			         + A[i][1] * kf->P[1][j]
+			         + A[i][2] * kf->P[2][j];
+		}
+	}
+
+	// Bước 5b: Tính APA^T = AP * A^T và cộng số hạng K * R * K^T
+	// Do R = diag(r_pos, r_vel) nên (K*R*K^T)_ij = K[i][0]*K[j][0]*r_pos + K[i][1]*K[j][1]*r_vel
 	float P_new[3][3];
 	for (int i = 0; i < 3; i++) {
 		for (int j = 0; j < 3; j++) {
-			P_new[i][j] = kf->P[i][j]
-					- (K[i][0] * kf->P[0][j] + K[i][1] * kf->P[1][j]);
+			float apa = AP[i][0] * A[j][0]
+			          + AP[i][1] * A[j][1]
+			          + AP[i][2] * A[j][2];
+
+			float krk = K[i][0] * K[j][0] * r_pos
+			          + K[i][1] * K[j][1] * r_vel;
+
+			P_new[i][j] = apa + krk;
+		}
+	}
+
+	// Bước 5c: Cưỡng bức tính đối xứng và bảo vệ đường chéo (variance > 0)
+	for (int i = 0; i < 3; i++) {
+		for (int j = i + 1; j < 3; j++) {
+			float sym = 0.5f * (P_new[i][j] + P_new[j][i]);
+			P_new[i][j] = sym;
+			P_new[j][i] = sym;
+		}
+		if (P_new[i][i] < 1e-6f) {
+			P_new[i][i] = 1e-6f;
 		}
 	}
 

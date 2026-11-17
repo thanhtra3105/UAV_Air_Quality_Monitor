@@ -71,8 +71,9 @@ float takeoff_target_alt = 150.0f; // Mặc định 150cm (1.5m)
 void PosHold_Init(void) {
 	KalmanAxis_Init(&kf_x);
 	KalmanAxis_Init(&kf_y);
-	KalmanGPS_Init(&kf_North, 0.0f, 0.0f, 0.1f, 0.001f);
-	KalmanGPS_Init(&kf_East, 0.0f, 0.0f, 0.1f, 0.001f);
+	// Q_accel = 2.8f (đã qua LPF alpha=0.25 giúp giảm bớt phương sai nhiễu rung động cơ khí từ ~5.5 xuống ~2.8)
+	KalmanGPS_Init(&kf_North, 0.0f, 0.0f, 2.8f, 0.001f);
+	KalmanGPS_Init(&kf_East,  0.0f, 0.0f, 2.8f, 0.001f);
 }
 
 /* ================= MTF-01 OPTICAL FLOW ESTIMATION (KALMAN) ================= */
@@ -242,6 +243,8 @@ void MTF_PositionHold(float dt_val) {
 	}
 }
 
+uint8_t gps_new_data_flag = 0;
+
 /* ================= GPS ESTIMATION (KALMAN) ================= */
 void Estimate_Position_GPS_Kalman(float dt_val) {
 	float ax_frd = ax;
@@ -264,21 +267,52 @@ void Estimate_Position_GPS_Kalman(float dt_val) {
 	ax_earth *= -9.81f;
 	ay_earth *= -9.81f;
 
-	KalmanGPS_Predict(&kf_North, ax_earth, dt_val);
-	KalmanGPS_Predict(&kf_East, ay_earth, dt_val);
+	static float ax_filt = 0.0f;
+	static float ay_filt = 0.0f;
+	const float ALPHA = 0.25f; // Lọc mượt
+	ax_filt += ALPHA * (ax_earth - ax_filt);
+	ay_filt += ALPHA * (ay_earth - ay_filt);
+	KalmanGPS_Predict(&kf_North, ax_filt, dt_val);
+	KalmanGPS_Predict(&kf_East,  ay_filt, dt_val);
 
 	if (gps.fixType >= 3 && gps.ready == 1) {
+		gps_new_data_flag = 1;
 		if (!gps_home_set) {
-			home_lat = gps.latitude;
-			home_lon = gps.longitude;
-			gps_home_set = 1;
+			/* =================================================================
+			 * ĐIỀU KIỆN CHẤT LƯỢNG GPS ĐỂ KHÓA TỌA ĐỘ HOME:
+			 *  1. numSV >= 8: Đủ tối thiểu 8 vệ tinh.
+			 *  2. pDOP <= 250: Độ phân tán vệ tinh tốt (pDOP <= 2.50).
+			 *  3. hAcc <= 2000 mm: Sai số vị trí ước lượng <= 2.0 mét.
+			 *  4. Duy trì liên tục 30 mẫu (~3 giây ở 10Hz) và lấy trung bình cộng.
+			 * ================================================================= */
+			static uint8_t gps_stable_count = 0;
+			static double  home_lat_sum = 0.0;
+			static double  home_lon_sum = 0.0;
 
-			kf_North.pos = 0.0f;
-			kf_North.vel = 0.0f;
-			kf_North.bias = 0.0f;
-			kf_East.pos = 0.0f;
-			kf_East.vel = 0.0f;
-			kf_East.bias = 0.0f;
+			if (gps.numSV >= 8 && gps.hAcc <= 2000 && gps.pDOP <= 250 && gps.pDOP > 0) {
+				gps_stable_count++;
+				home_lat_sum += gps.latitude;
+				home_lon_sum += gps.longitude;
+
+				if (gps_stable_count >= 30) {
+					// Lấy trung bình cộng 30 mẫu liên tiếp để triệt tiêu nhiễu giật
+					home_lat = home_lat_sum / 30.0;
+					home_lon = home_lon_sum / 30.0;
+					gps_home_set = 1;
+
+					kf_North.pos = 0.0f;
+					kf_North.vel = 0.0f;
+					kf_North.bias = 0.0f;
+					kf_East.pos = 0.0f;
+					kf_East.vel = 0.0f;
+					kf_East.bias = 0.0f;
+				}
+			} else {
+				// Nếu chất lượng bị giảm trong lúc đang đếm -> reset đếm lại
+				gps_stable_count = 0;
+				home_lat_sum = 0.0;
+				home_lon_sum = 0.0;
+			}
 		} else {
 			lat_err = (float) gps.latitude - home_lat;
 			lon_err = (float) gps.longitude - home_lon;
