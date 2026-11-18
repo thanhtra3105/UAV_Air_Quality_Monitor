@@ -294,10 +294,10 @@ void Estimate_Position_GPS_Kalman(float dt_val) {
 				home_lat_sum += gps.latitude;
 				home_lon_sum += gps.longitude;
 
-				if (gps_stable_count >= 30) {
-					// Lấy trung bình cộng 30 mẫu liên tiếp để triệt tiêu nhiễu giật
-					home_lat = home_lat_sum / 30.0;
-					home_lon = home_lon_sum / 30.0;
+				if (gps_stable_count >= 10) {
+					// Lấy trung bình cộng 10 mẫu liên tiếp để triệt tiêu nhiễu giật
+					home_lat = home_lat_sum / 10.0;
+					home_lon = home_lon_sum / 10.0;
 					gps_home_set = 1;
 
 					kf_North.pos = 0.0f;
